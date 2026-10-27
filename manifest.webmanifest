@@ -1,0 +1,16 @@
+{
+  "id": "./",
+  "name": "Yaver Mark II",
+  "short_name": "Yaver II",
+  "description": "Yaver Mark II: build 3D objects with your hands through the webcam (voice coming next).",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#07090f",
+  "theme_color": "#07090f",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
