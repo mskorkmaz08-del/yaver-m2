@@ -34,7 +34,7 @@ html, body {
 #camera {
   position: fixed;
   right: 16px;
-  bottom: 80px;
+  top: 70px;
   width: 200px;
   transform: scaleX(-1);
   border: 1px solid var(--line);
@@ -243,4 +243,101 @@ button.active { background: rgba(76, 201, 255, 0.25); border-color: var(--accent
   .shelf { grid-template-columns: repeat(5, 52px); top: 70px; transform: none; }
   .tile { width: 52px; height: 52px; }
   .tile img { width: 36px; height: 36px; }
+}
+
+/* ---- Yaver, the voice assistant (bottom-right) ---------------------------- */
+
+.yaver {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: min(340px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1;
+  pointer-events: none;
+}
+.yaver > * { pointer-events: auto; }
+.yaver-log {
+  max-height: 34vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, transparent 0, #000 28px);
+  padding-top: 24px;
+}
+.yaver-log p {
+  margin: 0;
+  padding: 7px 11px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(6px);
+  font-size: 13px;
+  line-height: 1.4;
+  max-width: 92%;
+}
+.yaver-log p.msg-you { align-self: flex-end; color: var(--muted); }
+.yaver-log p.interim { font-style: italic; opacity: 0.7; }
+.yaver-log p.msg-yaver { align-self: flex-start; border-color: rgba(76, 201, 255, 0.45); }
+.yaver-log p.error { border-color: rgba(255, 107, 107, 0.6); }
+.yaver-form { position: static; padding: 0; }
+.yaver-form input {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  padding: 8px 12px;
+  outline: none;
+}
+.yaver-foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.yaver-meta { text-align: right; font-size: 11px; color: var(--muted); line-height: 1.35; }
+.yaver-brain[data-state="local"] { color: #06d6a0; }
+.yaver-hint:empty { display: none; }
+
+/* The orb: calm when idle, pulsing while listening, spinning while
+   thinking, rippling while speaking. */
+.yaver-orb {
+  position: relative;
+  flex: none;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, rgba(76, 201, 255, 0.25), rgba(7, 9, 15, 0.9) 70%);
+  border: 1px solid var(--line);
+  box-shadow: 0 0 24px rgba(76, 201, 255, 0.25);
+}
+.yaver-orb .core {
+  position: absolute;
+  inset: 22px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #e8f8ff 0, #4cc9ff 60%, rgba(76, 201, 255, 0) 100%);
+  transition: transform 0.2s ease;
+}
+.yaver-orb .ring {
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  border: 2px solid rgba(76, 201, 255, 0.55);
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+}
+.yaver-orb .r2 { inset: 12px; border-color: rgba(143, 227, 255, 0.35); border-left-color: transparent; border-right-color: transparent; }
+.yaver[data-state="idle"] .r1 { animation: yaver-spin 12s linear infinite; }
+.yaver[data-state="idle"] .r2 { animation: yaver-spin 18s linear infinite reverse; }
+.yaver[data-state="listening"] .yaver-orb { box-shadow: 0 0 36px rgba(6, 214, 160, 0.55); border-color: #06d6a0; }
+.yaver[data-state="listening"] .core { animation: yaver-pulse 0.9s ease-in-out infinite; background: radial-gradient(circle, #eafff8 0, #06d6a0 60%, rgba(6, 214, 160, 0) 100%); }
+.yaver[data-state="thinking"] .r1 { animation: yaver-spin 0.9s linear infinite; }
+.yaver[data-state="thinking"] .r2 { animation: yaver-spin 1.4s linear infinite reverse; }
+.yaver[data-state="speaking"] .core { animation: yaver-pulse 0.45s ease-in-out infinite; }
+.yaver[data-state="speaking"] .yaver-orb { box-shadow: 0 0 40px rgba(76, 201, 255, 0.6); }
+@keyframes yaver-spin { to { transform: rotate(360deg); } }
+@keyframes yaver-pulse { 50% { transform: scale(1.35); } }
+@media (prefers-reduced-motion: reduce) {
+  .yaver .ring, .yaver .core { animation: none !important; }
 }

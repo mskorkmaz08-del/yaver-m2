@@ -47,6 +47,22 @@
     <div class="group" id="colors"></div>
   </footer>
 
+  <section class="yaver" id="yaver" data-state="idle" aria-label="Yaver assistant">
+    <div class="yaver-log" id="yaver-log" aria-live="polite"></div>
+    <form class="hud yaver-form" id="yaver-form">
+      <input id="yaver-text" autocomplete="off" placeholder='Say "Yaver…", hold Space, or type' />
+    </form>
+    <div class="yaver-foot">
+      <div class="yaver-meta">
+        <div class="yaver-brain" id="yaver-brain">Starting…</div>
+        <div class="yaver-hint" id="yaver-hint"></div>
+      </div>
+      <button class="yaver-orb" id="yaver-orb" title="Talk to Yaver (or hold Space)" aria-label="Talk to Yaver">
+        <span class="ring r1"></span><span class="ring r2"></span><span class="core"></span>
+      </button>
+    </div>
+  </section>
+
   <button id="trash" class="hud trash" title="Drop an object here to delete it (or click to delete the selected one)">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>
   </button>
@@ -65,6 +81,6 @@
       if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () {});
     })();
   </script>
-  <script type="module" src="src/main.js?v=9"></script>
+  <script type="module" src="src/main.js?v=10"></script>
 </body>
 </html>

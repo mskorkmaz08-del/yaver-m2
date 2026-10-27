@@ -1,12 +1,13 @@
 // The ?v= number defeats browser caching after an update (GitHub Pages lets
 // browsers keep files for 10 minutes). Bump it here and in index.html together.
-import { Editor, SHAPES, COLORS } from "./editor.js?v=9";
-import { HandTracker } from "./hands.js?v=9";
-import { classify } from "./gestures.js?v=9";
-import { Hands3D } from "./hand3d.js?v=9";
-import { Shelf } from "./shelf.js?v=9";
-import { gestureIcon } from "./helpicons.js?v=9";
-import { OneEuro } from "./filters.js?v=9";
+import { Editor, SHAPES, COLORS } from "./editor.js?v=10";
+import { HandTracker } from "./hands.js?v=10";
+import { classify } from "./gestures.js?v=10";
+import { Hands3D } from "./hand3d.js?v=10";
+import { Shelf } from "./shelf.js?v=10";
+import { gestureIcon } from "./helpicons.js?v=10";
+import { OneEuro } from "./filters.js?v=10";
+import { startAssistant } from "./assistant/assistant.js?v=10";
 
 const STUDIO_VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 document.getElementById("version").textContent = `v${STUDIO_VERSION}`;
@@ -32,7 +33,7 @@ const statusEl = document.getElementById("status");
 const tracker = new HandTracker(video);
 const hands3d = new Hands3D(editor.scene);
 
-window.yaver = { editor }; // handy from the console, and the hook for voice commands later
+window.yaver = { editor }; // handy from the console
 
 // ---- Starting scene -------------------------------------------------------
 
@@ -142,6 +143,7 @@ function dropAt(obj, x, y) {
 }
 
 window.addEventListener("keydown", (e) => {
+  if (e.target.closest?.("input, textarea")) return; // typing to Yaver
   if (e.key >= "0" && e.key <= "9" && SHAPES[(Number(e.key) + 9) % 10]) {
     const shape = SHAPES[(Number(e.key) + 9) % 10]; // 1 is the first shape, 0 the tenth
     setShape(shape);
@@ -438,6 +440,21 @@ function loop() {
 }
 loop();
 window.studioStarted = true;
+
+// ---- Yaver, the voice assistant ---------------------------------------------
+
+// Voice commands reach the studio through these.
+window.yaver.assistant = startAssistant({
+  editor,
+  setHelpOpen,
+  addShape(shape, color, i = 0, n = 1) {
+    setShape(shape);
+    const spread = (i - (n - 1) / 2) * 1.3;
+    const side = editor.camera.getWorldDirection(editor.target.clone()).cross({ x: 0, y: 1, z: 0 }).normalize();
+    const p = editor.target.clone().add({ x: side.x * spread, y: 0.5, z: side.z * spread });
+    return editor.addShape(shape, p, color ?? editor.currentColor);
+  },
+});
 
 statusEl.textContent = "Starting camera…";
 tracker.start()
