@@ -1,4 +1,4 @@
-import { synth as geminiSynth } from "./gemini.js?v=13";
+import { synth as geminiSynth } from "./gemini.js?v=14";
 
 // Listening and speaking, with no keys needed. Listening uses Chrome's speech
 // recognition (Chrome sends the audio to Google to turn it into text);
@@ -205,6 +205,23 @@ class SystemSpeaker extends EventTarget {
   }
 }
 
+// Mark One's "JARVIS" touch, one per audio output: trim the boom, lift the
+// presence a little and add a very short metallic echo.
+const chains = new WeakMap();
+export function jarvisOutput(ctx) {
+  if (chains.has(ctx)) return chains.get(ctx);
+  const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 140;
+  const pres = ctx.createBiquadFilter(); pres.type = "peaking"; pres.frequency.value = 3200; pres.gain.value = 3; pres.Q.value = 0.9;
+  const dry = ctx.createGain(); dry.gain.value = 0.9;
+  const echo = ctx.createDelay(0.05); echo.delayTime.value = 0.012;
+  const fb = ctx.createGain(); fb.gain.value = 0.25;
+  const wet = ctx.createGain(); wet.gain.value = 0.22;
+  hp.connect(pres); pres.connect(dry); dry.connect(ctx.destination);
+  pres.connect(echo); echo.connect(fb); fb.connect(echo); echo.connect(wet); wet.connect(ctx.destination);
+  chains.set(ctx, hp);
+  return hp;
+}
+
 // The natural voices. Two sources, both free:
 //  - Google's "Charon" (the voice Mark One uses), when Mark One's Gemini key
 //    is in this browser. The free tier is small, so if it runs out Yaver
@@ -221,7 +238,7 @@ class NeuralSpeaker extends EventTarget {
     super();
     this.kokoroReady = false;
     this.failed = false;
-    this.gemini = null;          // { key, voice } when Mark One has a key
+    this.gemini = null;          // { key, voice } when there is a Gemini key
     this.geminiPausedUntil = 0;
     this.queue = 0;
     this.nextId = 0;
@@ -230,8 +247,14 @@ class NeuralSpeaker extends EventTarget {
     this.epoch = 0;              // bumped by stop(), so queued audio is dropped
     this.source = null;
     this.ctx = null;
-    this.chain = null;
-    this.worker = new Worker(new URL("./tts-worker.js?v=13", import.meta.url), { type: "module" });
+    this.worker = null;          // Kokoro, started by loadKokoro()
+  }
+
+  // Downloads (the first time) and starts Kokoro. Not needed while Gemini's
+  // voice is available.
+  loadKokoro() {
+    if (this.worker) return;
+    this.worker = new Worker(new URL("./tts-worker.js?v=14", import.meta.url), { type: "module" });
     this.worker.onmessage = ({ data }) => {
       if (data.type === "progress") this.dispatchEvent(new CustomEvent("progress", { detail: data.pct }));
       else if (data.type === "ready") { this.kokoroReady = true; this.dispatchEvent(new Event("ready")); }
@@ -273,20 +296,8 @@ class NeuralSpeaker extends EventTarget {
     return this.ctx.state === "running";
   }
 
-  // Mark One's "JARVIS" touch: trim the boom, lift the presence a little and
-  // add a very short metallic echo.
   output() {
-    if (this.chain) return this.chain;
-    const ctx = this.ctx;
-    const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 140;
-    const pres = ctx.createBiquadFilter(); pres.type = "peaking"; pres.frequency.value = 3200; pres.gain.value = 3; pres.Q.value = 0.9;
-    const dry = ctx.createGain(); dry.gain.value = 0.9;
-    const echo = ctx.createDelay(0.05); echo.delayTime.value = 0.012;
-    const fb = ctx.createGain(); fb.gain.value = 0.25;
-    const wet = ctx.createGain(); wet.gain.value = 0.22;
-    hp.connect(pres); pres.connect(dry); dry.connect(ctx.destination);
-    pres.connect(echo); echo.connect(fb); fb.connect(echo); echo.connect(wet); wet.connect(ctx.destination);
-    return (this.chain = hp);
+    return jarvisOutput(this.ctx);
   }
 
   kokoro(text) {
@@ -314,6 +325,7 @@ class NeuralSpeaker extends EventTarget {
       } catch (err) {
         console.warn("Google voice failed, using Kokoro for a while", err);
         this.geminiPausedUntil = Date.now() + GEMINI_PAUSE_MS;
+        this.loadKokoro();
         this.dispatchEvent(new Event("ready"));
       }
     }
@@ -365,7 +377,7 @@ class NeuralSpeaker extends EventTarget {
     this.epoch++;
     // Drop sentences Kokoro hasn't voiced yet, so the next answer isn't
     // stuck behind them.
-    this.worker.postMessage({ type: "cancel", before: this.nextId });
+    this.worker?.postMessage({ type: "cancel", before: this.nextId });
     try { this.source?.stop(); } catch {}
     this.source = null;
     this.playing = Promise.resolve();
@@ -414,6 +426,7 @@ export class Speaker extends EventTarget {
   }
 
   useGemini(key, voice) { this.neural?.useGemini(key, voice); }
+  loadKokoro() { this.neural?.loadKokoro(); }
 
   say(text) {
     if (this.natural) return this.neural.say(text, (t) => { this.retry = this.retry ? `${this.retry} ${t}` : t; });

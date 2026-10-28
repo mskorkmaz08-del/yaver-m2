@@ -1,13 +1,13 @@
 // The 3D Studio: loaded the first time you open it from Yaver's home screen.
 // The ?v= number defeats browser caching after an update (GitHub Pages lets
 // browsers keep files for 10 minutes). Bump it everywhere together.
-import { Editor, SHAPES, COLORS } from "./editor.js?v=13";
-import { HandTracker } from "./hands.js?v=13";
-import { classify } from "./gestures.js?v=13";
-import { Hands3D } from "./hand3d.js?v=13";
-import { Shelf } from "./shelf.js?v=13";
-import { gestureIcon } from "./helpicons.js?v=13";
-import { OneEuro } from "./filters.js?v=13";
+import { Editor, SHAPES, COLORS } from "./editor.js?v=14";
+import { HandTracker } from "./hands.js?v=14";
+import { classify } from "./gestures.js?v=14";
+import { Hands3D } from "./hand3d.js?v=14";
+import { Shelf } from "./shelf.js?v=14";
+import { gestureIcon } from "./helpicons.js?v=14";
+import { OneEuro } from "./filters.js?v=14";
 
 const STUDIO_VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 document.getElementById("version").textContent = `v${STUDIO_VERSION}`;

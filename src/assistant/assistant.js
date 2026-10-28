@@ -1,14 +1,34 @@
-// Yaver, the talking assistant: wake word or button → speech to text →
-// studio command or language model → spoken, streamed answer.
-import { Brain } from "./brain.js?v=13";
-import { Listener, Speaker } from "./voice.js?v=13";
-import { parseCommand, navCommand, describeScene } from "./commands.js?v=13";
-import { markOneSettings } from "./markone.js?v=13";
+// Yaver, the talking assistant. With a Gemini key: a real-time voice
+// conversation through Gemini Live (live.js). Without one: wake word or button
+// → speech to text → studio command or language model → spoken answer.
+import { Brain } from "./brain.js?v=14";
+import { Listener, Speaker } from "./voice.js?v=14";
+import { parseCommand, navCommand, describeScene } from "./commands.js?v=14";
+import { geminiSettings, saveKey, forgetKey } from "./keys.js?v=14";
+import { LiveSession } from "./live.js?v=14";
 
 const HISTORY_KEY = "yaver-chat";
 const HISTORY_TURNS = 12; // messages kept for context (the local model's window is small)
 
+const LIVE_IDLE_S = 20; // a live conversation ends after this much silence
+const LIVE_PAUSE_MS = 10 * 60000; // after a Live failure, the other way for a while
+
 const PERSONA = `You are Yaver, Mustafa's personal AI assistant. Speak like JARVIS: calm, precise and understated, with British English and a touch of dry wit; now and then address him as "sir", not every time. No American filler. This is a voice conversation: you are heard, not read, so answer in one to three short spoken sentences, with no lists, markdown, emoji or code unless he asks for detail. You live in Yaver Mark II. Its home screen is you; from there he can open the 3D Studio (say "open the studio"), where he builds things with hand gestures through the webcam. The app itself handles studio commands like "add a red cube", "delete it", "make it bigger", "paint it green", "zoom in" and "clear the scene", so if he asks how to do something there, tell him the command or gesture. You can't browse the internet yet, so for live news, weather or prices say you can't check that yet. Never make up facts; say when you're unsure.`;
+
+// The same, for Gemini Live: it can search the web and run studio commands.
+const LIVE_PERSONA = PERSONA
+  .replace("You can't browse the internet yet, so for live news, weather or prices say you can't check that yet.", "For news, weather, prices or anything recent, use Google Search.")
+  .replace("The app itself handles studio commands", "Use the studio tool for anything in the 3D Studio (it opens the studio if needed), with commands")
+  + " Speak with a refined British accent, at a brisk, natural pace.";
+
+const LIVE_TOOLS = [
+  {
+    name: "studio",
+    description: "Runs a command in Yaver's 3D Studio and says what happened. One short English command per call, such as: open the studio, go home, add two red cubes, add a gold torus, delete it, clear the scene, make it bigger, make it smaller, paint it green, turn it, zoom in, zoom out, show the gestures.",
+    parameters: { type: "OBJECT", properties: { command: { type: "STRING", description: "The command, in plain English." } }, required: ["command"] },
+  },
+  { name: "describe_scene", description: "Says what is in the 3D Studio right now." },
+];
 
 function loadHistory() {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch { return []; }
@@ -37,11 +57,18 @@ export function startAssistant(app) {
     hint: document.getElementById("yaver-hint"),
     connect: document.getElementById("yaver-connect"),
     textToggle: document.getElementById("yaver-text-toggle"),
+    keyLink: document.getElementById("yaver-key-link"),
+    keyBox: document.getElementById("yaver-key"),
+    keyForm: document.getElementById("yaver-key-form"),
+    keyInput: document.getElementById("yaver-key-input"),
+    keyCancel: document.getElementById("yaver-key-cancel"),
+    keyError: document.getElementById("yaver-key-error"),
   };
   const brain = new Brain();
   const listener = new Listener();
   const speaker = new Speaker();
   let history = loadHistory();
+  const hello = greeting();
   let busy = false;
   let turn = 0; // each request gets a number; a newer one replaces an older one
 
@@ -154,24 +181,29 @@ export function startAssistant(app) {
     if (my === turn) listener.followUp();
   }
 
+  // Opening and leaving the studio, and studio commands, are instant and never
+  // need the model. A studio command from the home screen opens the studio
+  // first. Returns what was done, or null if it isn't a studio command.
+  async function studioCommand(request) {
+    const nav = navCommand(request);
+    const action = nav ? null : parseCommand(request);
+    if (nav === "studio") { const was = app.view(); app.openStudio(); return was === "studio" ? "We're already in the studio, sir." : "Opening the studio."; }
+    if (nav === "home") { app.goHome(); return "Back to the home screen."; }
+    if (action) return action(app.view() === "studio" ? app.studio() : await app.openStudio());
+    return null;
+  }
+
   async function handle(request) {
     request = request.trim();
     if (!request) return;
+    if (liveOn()) { talkLive(request); return; }
     // A new request replaces whatever Yaver was still saying or thinking.
     const my = ++turn;
     speaker.stop();
     if (interimLine) { interimLine.remove(); interimLine = null; }
     addLine("msg-you", request);
 
-    // Opening and leaving the studio, and studio commands, are instant and
-    // never need the model. A studio command from the home screen opens the
-    // studio first.
-    const nav = navCommand(request);
-    const action = nav ? null : parseCommand(request);
-    let done = null;
-    if (nav === "studio") { done = app.view() === "studio" ? "We're already in the studio, sir." : "Opening the studio."; app.openStudio(); }
-    else if (nav === "home") { app.goHome(); done = "Back to the home screen."; }
-    else if (action) done = action(app.view() === "studio" ? app.studio() : await app.openStudio());
+    const done = await studioCommand(request);
     if (done) {
       busy = false;
       addLine("msg-yaver", done);
@@ -221,9 +253,112 @@ export function startAssistant(app) {
     answer(voice.flush(), my);
   }
 
+  // ---- Gemini Live -------------------------------------------------------------
+
+  let liveKey = "";
+  let liveVoice = "Charon";
+  let livePausedUntil = 0;
+  let live = null;      // the current LiveSession
+  let liveLines = { you: null, yaver: null };
+  const liveOn = () => Boolean(liveKey) && Date.now() > livePausedUntil;
+
+  function liveSystem() {
+    const now = new Date().toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+    const recent = history.slice(-8).map((m) => `${m.role === "user" ? "Mustafa" : "Yaver"}: ${m.content}`).join("\n");
+    return `${LIVE_PERSONA}\nIt is now ${now}. ${describeScene(app.view() === "studio" ? app.studio()?.editor : null)}${recent ? `\nYour last exchange:\n${recent}` : ""}`;
+  }
+
+  // Grows the transcript line for whoever is talking.
+  function liveLine(who, text) {
+    const other = who === "you" ? "yaver" : "you";
+    if (liveLines[other]) { remember(other, liveLines[other].textContent); liveLines[other] = null; }
+    liveLines[who] ??= addLine(who === "you" ? "msg-you" : "msg-yaver");
+    liveLines[who].textContent += text;
+    el.log.scrollTop = el.log.scrollHeight;
+  }
+  function remember(who, text) {
+    text = text.trim();
+    if (!text) return;
+    history.push({ role: who === "you" ? "user" : "assistant", content: text });
+    saveHistory(history);
+  }
+
+  // Starts a conversation (or adds to the one going on). `text` is what he
+  // already said to wake Yaver, if anything.
+  async function talkLive(text = "") {
+    speaker.stop();
+    if (interimLine) { interimLine.remove(); interimLine = null; }
+    if (live && !live.closed) {
+      if (text) { liveLine("you", text); live.sendText(text); }
+      return;
+    }
+    listener.pause(true); // the conversation uses the microphone itself
+    const session = new LiveSession({
+      key: liveKey,
+      voice: liveVoice,
+      system: liveSystem(),
+      tools: {
+        declarations: LIVE_TOOLS,
+        run: async (name, args) => {
+          if (name === "describe_scene") return describeScene(app.studio()?.editor ?? null) || "The studio is empty.";
+          return (await studioCommand(String(args.command || ""))) ?? "That isn't a studio command I know. Try: add, delete, clear, bigger, smaller, paint, turn, zoom.";
+        },
+      },
+    });
+    live = session;
+    if (text) { liveLine("you", text); session.sendText(text); }
+    session.addEventListener("open", () => { setLook("listening"); el.hint.textContent = ""; });
+    session.addEventListener("speaking", () => setLook("speaking"));
+    session.addEventListener("quiet", () => { if (live === session) setLook("listening"); });
+    session.addEventListener("heard", (e) => liveLine("you", e.detail));
+    session.addEventListener("said", (e) => liveLine("yaver", e.detail));
+    session.addEventListener("turn", () => {
+      for (const who of ["you", "yaver"]) if (liveLines[who]) { remember(who, liveLines[who].textContent); liveLines[who] = null; }
+    });
+    session.addEventListener("close", (e) => {
+      if (live !== session) return;
+      live = null;
+      for (const who of ["you", "yaver"]) if (liveLines[who]) { remember(who, liveLines[who].textContent); liveLines[who] = null; }
+      if (e.detail && e.detail !== "idle" && e.detail !== "stopped") el.hint.textContent = `Gemini Live: ${e.detail}`;
+      setLook("idle");
+      listener.setMode("wake");
+      listener.pause(false);
+    });
+    setLook("thinking");
+    try {
+      await session.start();
+    } catch (err) {
+      if (live !== session) return;
+      console.warn("Gemini Live failed", err);
+      session.close("stopped");
+      const msg = String(err.message || err);
+      if (/api key/i.test(msg)) {
+        // Refused key: offer the key box again (Mark One's own key is left alone).
+        forgetKey();
+        liveKey = "";
+        el.keyLink.hidden = false;
+        el.hint.textContent = "Google refused the Gemini key. Click \"Add free Gemini key\" and paste it again.";
+      } else {
+        el.hint.textContent = /permission|denied|notallowed/i.test(msg)
+          ? "Microphone blocked: allow it in the address bar."
+          : `Gemini Live isn't available right now (${msg}), using my other brains for a while.`;
+      }
+      livePausedUntil = Date.now() + LIVE_PAUSE_MS;
+      if (text) handle(text);
+    }
+  }
+
+  // A conversation nobody is talking in ends by itself (it uses free quota).
+  setInterval(() => {
+    if (live && !live.closed && live.ready && live.idleSeconds > LIVE_IDLE_S) live.close("idle");
+  }, 1000);
+
   // ---- Listening ---------------------------------------------------------------
 
   listener.addEventListener("mode", () => {
+    if (live) return;
+    // "Yaver…": start the live conversation right away; it hears the rest.
+    if (listener.mode === "command" && liveOn()) { talkLive(); return; }
     if (listener.mode === "command") speaker.stop(); // talking over Yaver interrupts it
     refreshLook();
   });
@@ -239,7 +374,7 @@ export function startAssistant(app) {
 
   // Pause the microphone while Yaver speaks, so it doesn't hear itself.
   speaker.addEventListener("start", () => { listener.pause(true); refreshLook(); });
-  speaker.addEventListener("end", () => { listener.pause(false); refreshLook(); });
+  speaker.addEventListener("end", () => { if (!live) { listener.pause(false); refreshLook(); } });
 
   // ---- Voice status ------------------------------------------------------------
 
@@ -252,7 +387,7 @@ export function startAssistant(app) {
   speaker.addEventListener("failed", () => { showVoice(); showTextMode(); });
   showVoice();
   showTextMode();
-  // The first time, the voice downloads after the greeting: say hello once it can.
+  // The voice may not be ready when the greeting comes: say hello once it is.
   let voiced = false;
   let greetedAloud = false;
   speaker.addEventListener("ready", () => {
@@ -260,18 +395,46 @@ export function startAssistant(app) {
     showTextMode();
     if (voiced) return;
     voiced = true;
-    if (!greetedAloud && !speaker.speaking) speaker.say("Voice systems online, sir.");
+    if (!greetedAloud && !speaker.speaking && !live) speaker.say(hello);
   });
-  markOneSettings().then(({ geminiKey, ttsVoice }) => {
-    if (geminiKey) speaker.useGemini(geminiKey, ttsVoice || "Charon");
+  // With a Gemini key: Gemini Live for conversations and Google's voice for
+  // the rest. Without: Kokoro on this computer, and the key box.
+  geminiSettings().then(({ geminiKey, ttsVoice }) => {
+    liveVoice = ttsVoice || "Charon";
+    el.keyLink.hidden = Boolean(geminiKey);
+    if (geminiKey) {
+      liveKey = geminiKey;
+      speaker.useGemini(geminiKey, liveVoice);
+      el.voice.textContent = `Voice: Gemini Live "${liveVoice}"`;
+    } else {
+      speaker.loadKokoro();
+    }
+  });
+
+  // ---- Gemini key, pasted once -------------------------------------------------
+
+  el.keyLink.addEventListener("click", () => { el.keyBox.hidden = false; el.keyInput.focus(); });
+  el.keyCancel.addEventListener("click", () => { el.keyBox.hidden = true; });
+  el.keyForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    el.keyError.textContent = "Checking…";
+    try {
+      await saveKey(el.keyInput.value);
+      el.keyError.textContent = "Saved. Restarting…";
+      setTimeout(() => location.reload(), 400);
+    } catch (err) {
+      el.keyError.textContent = err.message;
+    }
   });
 
   // Sound may only start after a click or key press.
   for (const type of ["pointerdown", "keydown"]) window.addEventListener(type, () => speaker.unlock(), { capture: true });
 
   el.orb.addEventListener("click", () => {
+    if (live) { live.close("stopped"); return; } // ends the conversation
     if (speaker.speaking) { speaker.stop(); return; }
-    listener.listenNow();
+    if (liveOn()) talkLive();
+    else listener.listenNow();
   });
   el.form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -282,9 +445,11 @@ export function startAssistant(app) {
 
   // Hold Space to talk (when not typing).
   window.addEventListener("keydown", (e) => {
-    if (e.code !== "Space" || e.repeat || e.target === el.input) return;
+    if (e.code !== "Space" || e.repeat || e.target === el.input || e.target === el.keyInput) return;
     e.preventDefault();
-    listener.listenNow();
+    if (live) return;
+    if (liveOn()) talkLive();
+    else listener.listenNow();
   });
 
   // ---- Start -----------------------------------------------------------------
@@ -295,7 +460,6 @@ export function startAssistant(app) {
   listener.start();
   brain.init();
 
-  const hello = greeting();
   addLine("msg-yaver", hello);
   setLook("idle");
   // Chrome only lets a page speak after a click or key press; if the greeting
