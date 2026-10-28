@@ -314,20 +314,20 @@ button.active { background: rgba(76, 201, 255, 0.25); border-color: var(--accent
 }
 .yaver-orb .core {
   position: absolute;
-  inset: 22px;
+  inset: 34%;
   border-radius: 50%;
   background: radial-gradient(circle, #e8f8ff 0, #4cc9ff 60%, rgba(76, 201, 255, 0) 100%);
   transition: transform 0.2s ease;
 }
 .yaver-orb .ring {
   position: absolute;
-  inset: 6px;
+  inset: 9%;
   border-radius: 50%;
   border: 2px solid rgba(76, 201, 255, 0.55);
   border-top-color: transparent;
   border-bottom-color: transparent;
 }
-.yaver-orb .r2 { inset: 12px; border-color: rgba(143, 227, 255, 0.35); border-left-color: transparent; border-right-color: transparent; }
+.yaver-orb .r2 { inset: 19%; border-color: rgba(143, 227, 255, 0.35); border-left-color: transparent; border-right-color: transparent; }
 .yaver[data-state="idle"] .r1 { animation: yaver-spin 12s linear infinite; }
 .yaver[data-state="idle"] .r2 { animation: yaver-spin 18s linear infinite reverse; }
 .yaver[data-state="listening"] .yaver-orb { box-shadow: 0 0 36px rgba(6, 214, 160, 0.55); border-color: #06d6a0; }
@@ -341,3 +341,79 @@ button.active { background: rgba(76, 201, 255, 0.25); border-color: var(--accent
 @media (prefers-reduced-motion: reduce) {
   .yaver .ring, .yaver .core { animation: none !important; }
 }
+
+/* ---- Views: Yaver's home screen and the 3D Studio ---------------------------- */
+
+body[data-view="home"] .studio-only { display: none !important; }
+body[data-view="studio"] .home-only,
+body[data-view="studio"] .home-bg { display: none !important; }
+
+.home-bg {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(47, 155, 255, 0.16), transparent 45%),
+    repeating-radial-gradient(circle at 50% 42%, rgba(76, 201, 255, 0.05) 0 1px, transparent 1px 64px),
+    linear-gradient(rgba(76, 201, 255, 0.035) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(90deg, rgba(76, 201, 255, 0.035) 1px, transparent 1px) 0 0 / 48px 48px,
+    var(--bg);
+}
+.home-head {
+  position: fixed;
+  top: 20px;
+  left: 24px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.home-title { font-weight: 700; letter-spacing: 0.35em; color: var(--accent); }
+.home-title span { color: var(--muted); font-weight: 400; letter-spacing: 0.25em; }
+.open-studio {
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 10px;
+  border-radius: 999px;
+  color: var(--text);
+}
+.open-studio svg, .go-home svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.go-home { display: grid; place-items: center; padding: 4px; margin: -2px 0 -2px -6px; border-radius: 50%; background: none; border: 0; }
+.go-home:hover { background: rgba(76, 201, 255, 0.12); }
+
+/* At home, Yaver sits in the middle: a big orb, the conversation under it. */
+body[data-view="home"] .yaver {
+  left: 50%;
+  right: auto;
+  top: 50%;
+  bottom: auto;
+  transform: translate(-50%, -46%);
+  width: min(620px, calc(100vw - 32px));
+  align-items: center;
+  gap: 14px;
+}
+body[data-view="home"] .yaver-foot { order: -1; flex-direction: column-reverse; gap: 14px; }
+body[data-view="home"] .yaver-meta { text-align: center; }
+body[data-view="home"] .yaver-orb {
+  width: min(200px, 40vh);
+  height: min(200px, 40vh);
+  box-shadow: 0 0 80px rgba(76, 201, 255, 0.3), inset 0 0 40px rgba(76, 201, 255, 0.15);
+}
+body[data-view="home"] .yaver-orb .ring { border-width: 3px; }
+body[data-view="home"] .yaver-log {
+  width: 100%;
+  max-height: 30vh;
+  min-height: 0;
+}
+body[data-view="home"] .yaver-log p { font-size: 15px; }
+body[data-view="home"] .yaver-form { width: 100%; }
+body[data-view="home"] .yaver-form input { padding: 11px 16px; font-size: 15px; text-align: center; }

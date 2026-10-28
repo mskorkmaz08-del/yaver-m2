@@ -49,79 +49,97 @@ function findCount(text) {
 
 const plural = (n, shape) => (n === 1 ? `a ${shape}` : `${n} ${shape === "torus" ? "tori" : shape + "s"}`);
 
-// `studio` is { editor, addShape(shape, color), setHelpOpen(open) } from main.js.
-export function runCommand(raw, studio) {
+// Opening and leaving the 3D studio.
+export function navCommand(raw) {
+  const text = raw.toLowerCase();
+  if (/\b(open|start|launch|enter|show|go to|take me to|switch to)\b.*\b(studio|editor|3d|workshop|lab)\b|\blet'?s (build|create|make something)\b/.test(text)) return "studio";
+  if (/\b(close|exit|leave|quit)\b.*\b(studio|editor|3d)\b|\b(go|come) (back|home)\b|\bhome screen\b/.test(text)) return "home";
+  return null;
+}
+
+// Works out which studio command a sentence is, without running it yet, so
+// the studio can be opened first if it's closed. Returns a function that
+// takes the studio ({ editor, addShape(shape, color, i, n), setHelpOpen(open) })
+// and returns what Yaver should say, or null when it isn't a studio command.
+export function parseCommand(raw) {
   const text = raw.toLowerCase().replace(/[.,!?]/g, " ").replace(/\s+/g, " ").trim();
-  const { editor } = studio;
   const shape = findShape(text);
   const color = findColor(text);
-  const target = () => editor.selected || editor.objects[editor.objects.length - 1] || null;
+  const target = (editor) => editor.selected || editor.objects[editor.objects.length - 1] || null;
 
   // Add shapes.
   if (shape && /\b(add|create|make|spawn|put|place|give me|build|drop|i want|i need|new)\b/.test(text) &&
       !/\b(delete|remove|destroy|get rid)\b/.test(text)) {
     const n = findCount(text);
-    for (let i = 0; i < n; i++) studio.addShape(shape, color?.hex, i, n);
-    return `${n === 1 ? "Here's" : "Here are"} ${plural(n, shape)}${color ? `, in ${color.name}` : ""}.`;
+    return (studio) => {
+      for (let i = 0; i < n; i++) studio.addShape(shape, color?.hex, i, n);
+      return `${n === 1 ? "Here's" : "Here are"} ${plural(n, shape)}${color ? `, in ${color.name}` : ""}.`;
+    };
   }
 
   // Delete.
   if (/\b(delete|remove|destroy|get rid of|trash|bin)\b/.test(text)) {
-    if (/\b(everything|all|every|the scene|whole scene)\b/.test(text)) {
-      const n = editor.objects.length;
-      for (const o of [...editor.objects]) editor.remove(o);
-      return n ? "Scene cleared." : "The scene is already empty.";
-    }
-    let obj = target();
-    if (shape) {
-      const matches = editor.objects.filter((o) => o.userData.shape === shape);
-      obj = matches.includes(editor.selected) ? editor.selected : matches[matches.length - 1];
-    }
-    if (!obj) return shape ? `There's no ${shape} to delete.` : "There's nothing to delete.";
-    const name = obj.userData.shape;
-    editor.remove(obj);
-    return `${name[0].toUpperCase() + name.slice(1)} deleted.`;
+    if (/\b(everything|all|every|the scene|whole scene)\b/.test(text)) return clearAll;
+    return ({ editor }) => {
+      let obj = target(editor);
+      if (shape) {
+        const matches = editor.objects.filter((o) => o.userData.shape === shape);
+        obj = matches.includes(editor.selected) ? editor.selected : matches[matches.length - 1];
+      }
+      if (!obj) return shape ? `There's no ${shape} to delete.` : "There's nothing to delete.";
+      const name = obj.userData.shape;
+      editor.remove(obj);
+      return `${name[0].toUpperCase() + name.slice(1)} deleted.`;
+    };
   }
-  if (/\b(clear|reset|empty)\b.*\b(scene|everything|all)\b|^(clear|reset) (it|the scene)$/.test(text)) {
-    for (const o of [...editor.objects]) editor.remove(o);
-    return "Scene cleared.";
-  }
+  if (/\b(clear|reset|empty)\b.*\b(scene|everything|all)\b|^(clear|reset) (it|the scene)$/.test(text)) return clearAll;
 
   // Colour the selected (or newest) object.
   if (color && /\b(colou?r|paint|make|turn|change|set)\b/.test(text)) {
-    const obj = target();
-    editor.setColor(color.hex, obj);
-    return obj ? `Painted ${color.name}.` : `New shapes will be ${color.name}.`;
+    return ({ editor }) => {
+      const obj = target(editor);
+      editor.setColor(color.hex, obj);
+      return obj ? `Painted ${color.name}.` : `New shapes will be ${color.name}.`;
+    };
   }
 
   // Size.
   const bigger = /\b(bigger|larger|grow|scale (it )?up|enlarge|increase)\b/.test(text);
   const smaller = /\b(smaller|shrink|scale (it )?down|reduce|tinier|decrease)\b/.test(text);
   if (bigger || smaller) {
-    const obj = target();
-    if (!obj) return "There's nothing to resize.";
     const much = /\b(much|lot|way|twice|double|half)\b/.test(text) ? 2 : 1.4;
-    editor.setScale(obj, obj.scale.x * (bigger ? much : 1 / much));
-    return bigger ? "Bigger it is." : "Smaller it is.";
+    return ({ editor }) => {
+      const obj = target(editor);
+      if (!obj) return "There's nothing to resize.";
+      editor.setScale(obj, obj.scale.x * (bigger ? much : 1 / much));
+      return bigger ? "Bigger it is." : "Smaller it is.";
+    };
   }
 
   // View.
-  if (/\bzoom (in|closer)\b|\bcloser\b/.test(text)) { editor.zoomBy(0.75); return "Zooming in."; }
-  if (/\bzoom out\b|\bfurther\b|\bfarther\b/.test(text)) { editor.zoomBy(1.33); return "Zooming out."; }
-  if (/\b(rotate|turn|spin|orbit)\b.*\b(view|camera|scene)\b.*\bleft\b|\blook left\b/.test(text)) { editor.orbitBy(-0.6, 0); return "Turning left."; }
-  if (/\b(rotate|turn|spin|orbit)\b.*\b(view|camera|scene)\b.*\bright\b|\blook right\b/.test(text)) { editor.orbitBy(0.6, 0); return "Turning right."; }
+  if (/\bzoom (in|closer)\b/.test(text)) return ({ editor }) => { editor.zoomBy(0.75); return "Zooming in."; };
+  if (/\bzoom out\b/.test(text)) return ({ editor }) => { editor.zoomBy(1.33); return "Zooming out."; };
+  if (/\b(rotate|turn|spin|orbit)\b.*\b(view|camera|scene)\b.*\bleft\b|\blook left\b/.test(text)) return ({ editor }) => { editor.orbitBy(-0.6, 0); return "Turning left."; };
+  if (/\b(rotate|turn|spin|orbit)\b.*\b(view|camera|scene)\b.*\bright\b|\blook right\b/.test(text)) return ({ editor }) => { editor.orbitBy(0.6, 0); return "Turning right."; };
 
   // Help panel.
-  if (/\b(show|open)\b.*\b(help|gestures|controls|tutorial)\b/.test(text)) { studio.setHelpOpen(true); return "Here are the hand controls."; }
-  if (/\b(hide|close)\b.*\b(help|gestures|controls|tutorial)\b/.test(text)) { studio.setHelpOpen(false); return "Help closed."; }
+  if (/\b(show|open)\b.*\b(help|gestures|hand controls|tutorial)\b/.test(text)) return (studio) => { studio.setHelpOpen(true); return "Here are the hand controls."; };
+  if (/\b(hide|close)\b.*\b(help|gestures|hand controls|tutorial)\b/.test(text)) return (studio) => { studio.setHelpOpen(false); return "Help closed."; };
 
   return null;
 }
 
+function clearAll({ editor }) {
+  const n = editor.objects.length;
+  for (const o of [...editor.objects]) editor.remove(o);
+  return n ? "Scene cleared." : "The scene is already empty.";
+}
+
 // One line describing the scene, so the model can talk about it.
 export function describeScene(editor) {
+  if (!editor) return "The 3D studio is closed; he is on Yaver's home screen.";
   const counts = {};
   for (const o of editor.objects) counts[o.userData.shape] = (counts[o.userData.shape] || 0) + 1;
   const parts = Object.entries(counts).map(([s, n]) => plural(n, s));
-  return parts.length ? `The 3D scene has ${parts.join(", ")}.` : "The 3D scene is empty.";
+  return parts.length ? `He is in the 3D studio. The scene has ${parts.join(", ")}.` : "He is in the 3D studio. The scene is empty.";
 }

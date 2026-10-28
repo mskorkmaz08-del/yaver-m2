@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Yaver Studio</title>
+  <title>Yaver Mark II</title>
   <link rel="stylesheet" href="style.css" />
   <!-- Installable as its own app (separate from the main Yaver app). -->
   <link rel="manifest" href="manifest.webmanifest" />
@@ -20,17 +20,32 @@
     }
   </script>
 </head>
-<body>
-  <div id="stage"></div>
-  <canvas id="hands-overlay"></canvas>
+<body data-view="home">
+  <!-- Home: just Yaver. -->
+  <div class="home-bg" aria-hidden="true"></div>
+  <header class="home-head home-only">
+    <div class="home-title">YAVER <span>MARK II</span></div>
+    <span class="app-version version"></span>
+  </header>
+  <button class="hud open-studio home-only" id="open-studio" title="Open the 3D Studio (or say &quot;open the studio&quot;)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 20.5 7v10L12 21.5 3.5 17V7z M3.5 7 12 11.5 20.5 7 M12 11.5v10" /></svg>
+    <span>3D Studio</span>
+  </button>
+
+  <!-- The 3D Studio: shown when opened. -->
+  <div id="stage" class="studio-only"></div>
+  <canvas id="hands-overlay" class="studio-only"></canvas>
   <video id="camera" playsinline muted></video>
 
-  <header class="hud hud-top">
+  <header class="hud hud-top studio-only">
+    <button class="go-home" id="go-home" title="Back to Yaver (Esc)" aria-label="Back to Yaver">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+    </button>
     <div class="brand">YAVER STUDIO <span id="version" class="version"></span></div>
     <div id="status" class="status">Starting…</div>
   </header>
 
-  <div class="help" id="help">
+  <div class="help studio-only" id="help">
     <button id="help-button" class="hud help-button" title="Hand controls (H)" aria-expanded="false" aria-controls="help-panel">
       <span class="help-q">?</span><span class="help-label">Gestures</span>
     </button>
@@ -41,9 +56,9 @@
     </aside>
   </div>
 
-  <nav class="hud shelf" id="shelf" aria-label="Shapes"></nav>
+  <nav class="hud shelf studio-only" id="shelf" aria-label="Shapes"></nav>
 
-  <footer class="hud toolbar">
+  <footer class="hud toolbar studio-only">
     <div class="group" id="colors"></div>
   </footer>
 
@@ -55,6 +70,7 @@
     <div class="yaver-foot">
       <div class="yaver-meta">
         <div class="yaver-brain" id="yaver-brain">Starting…</div>
+        <div class="yaver-voice" id="yaver-voice"></div>
         <div class="yaver-hint" id="yaver-hint"></div>
       </div>
       <button class="yaver-orb" id="yaver-orb" title="Talk to Yaver (or hold Space)" aria-label="Talk to Yaver">
@@ -63,24 +79,26 @@
     </div>
   </section>
 
-  <button id="trash" class="hud trash" title="Drop an object here to delete it (or click to delete the selected one)">
+  <button id="trash" class="hud trash studio-only" title="Drop an object here to delete it (or click to delete the selected one)">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>
   </button>
 
   <script>
-    // If the Studio fails to start, say why instead of sitting on "Starting…".
+    // If the app fails to start, say why instead of sitting on "Starting…".
     (function () {
-      var status = document.getElementById("status");
       var lastError = "";
-      function show(msg) { lastError = msg; status.textContent = "Error: " + msg; }
+      function say(text) {
+        ["status", "yaver-hint"].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = text; });
+      }
+      function show(msg) { lastError = msg; say("Error: " + msg); }
       window.addEventListener("error", function (e) { show(e.message || "a file failed to load"); });
       window.addEventListener("unhandledrejection", function (e) { show(String(e.reason && e.reason.message || e.reason)); });
       setTimeout(function () {
-        if (!window.studioStarted) status.textContent = (lastError ? "Error: " + lastError + ". " : "") + "Couldn't start. Press Cmd+Shift+R (Ctrl+Shift+R on Windows) to reload.";
+        if (!window.studioStarted) say((lastError ? "Error: " + lastError + ". " : "") + "Couldn't start. Press Cmd+Shift+R (Ctrl+Shift+R on Windows) to reload.");
       }, 10000);
       if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () {});
     })();
   </script>
-  <script type="module" src="src/main.js?v=10"></script>
+  <script type="module" src="src/app.js?v=11"></script>
 </body>
 </html>

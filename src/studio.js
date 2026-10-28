@@ -1,13 +1,13 @@
+// The 3D Studio: loaded the first time you open it from Yaver's home screen.
 // The ?v= number defeats browser caching after an update (GitHub Pages lets
-// browsers keep files for 10 minutes). Bump it here and in index.html together.
-import { Editor, SHAPES, COLORS } from "./editor.js?v=10";
-import { HandTracker } from "./hands.js?v=10";
-import { classify } from "./gestures.js?v=10";
-import { Hands3D } from "./hand3d.js?v=10";
-import { Shelf } from "./shelf.js?v=10";
-import { gestureIcon } from "./helpicons.js?v=10";
-import { OneEuro } from "./filters.js?v=10";
-import { startAssistant } from "./assistant/assistant.js?v=10";
+// browsers keep files for 10 minutes). Bump it everywhere together.
+import { Editor, SHAPES, COLORS } from "./editor.js?v=11";
+import { HandTracker } from "./hands.js?v=11";
+import { classify } from "./gestures.js?v=11";
+import { Hands3D } from "./hand3d.js?v=11";
+import { Shelf } from "./shelf.js?v=11";
+import { gestureIcon } from "./helpicons.js?v=11";
+import { OneEuro } from "./filters.js?v=11";
 
 const STUDIO_VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 document.getElementById("version").textContent = `v${STUDIO_VERSION}`;
@@ -33,7 +33,7 @@ const statusEl = document.getElementById("status");
 const tracker = new HandTracker(video);
 const hands3d = new Hands3D(editor.scene);
 
-window.yaver = { editor }; // handy from the console
+window.yaver = { ...window.yaver, editor }; // handy from the console
 
 // ---- Starting scene -------------------------------------------------------
 
@@ -143,7 +143,7 @@ function dropAt(obj, x, y) {
 }
 
 window.addEventListener("keydown", (e) => {
-  if (e.target.closest?.("input, textarea")) return; // typing to Yaver
+  if (!active || e.target.closest?.("input, textarea")) return; // home screen, or typing to Yaver
   if (e.key >= "0" && e.key <= "9" && SHAPES[(Number(e.key) + 9) % 10]) {
     const shape = SHAPES[(Number(e.key) + 9) % 10]; // 1 is the first shape, 0 the tenth
     setShape(shape);
@@ -420,8 +420,11 @@ function drawHoldRings(now) {
 // ---- Main loop ---------------------------------------------------------------
 
 let trackingReady = false;
+let active = true; // false while the home screen is showing
 
 function loop() {
+  requestAnimationFrame(loop);
+  if (!active) return;
   const now = performance.now();
   if (trackingReady) {
     const detected = tracker.detect();
@@ -436,15 +439,42 @@ function loop() {
   updateDropTargets();
   updateHelpPeek();
   editor.render();
-  requestAnimationFrame(loop);
 }
 loop();
-window.studioStarted = true;
 
-// ---- Yaver, the voice assistant ---------------------------------------------
+// ---- Opening and closing ----------------------------------------------------
 
-// Voice commands reach the studio through these.
-window.yaver.assistant = startAssistant({
+function startCamera() {
+  statusEl.textContent = "Starting camera…";
+  return tracker.start()
+    .then(() => {
+      if (active) trackingReady = true;
+      else tracker.stop(); // went home while the camera was starting
+    })
+    .catch((err) => {
+      console.error(err);
+      statusEl.textContent = "No camera: using mouse and keyboard";
+    });
+}
+startCamera();
+
+// Leaving for the home screen stops the camera and the drawing; coming back
+// turns them on again.
+export function pause() {
+  active = false;
+  trackingReady = false;
+  tracker.stop();
+  hands.clear();
+}
+export function resume() {
+  if (active) return;
+  active = true;
+  editor.resize();
+  startCamera();
+}
+
+// What Yaver's voice commands use.
+export const api = {
   editor,
   setHelpOpen,
   addShape(shape, color, i = 0, n = 1) {
@@ -454,12 +484,4 @@ window.yaver.assistant = startAssistant({
     const p = editor.target.clone().add({ x: side.x * spread, y: 0.5, z: side.z * spread });
     return editor.addShape(shape, p, color ?? editor.currentColor);
   },
-});
-
-statusEl.textContent = "Starting camera…";
-tracker.start()
-  .then(() => { trackingReady = true; })
-  .catch((err) => {
-    console.error(err);
-    statusEl.textContent = "No camera: using mouse and keyboard";
-  });
+};
