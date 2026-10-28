@@ -8,8 +8,8 @@
 //    graphics chip through WebLLM. It downloads once (about 1.5 GB), then
 //    works offline. Only loaded when there is no cloud brain.
 //  - Pollinations' free text API, a last resort (heavily rate limited).
-import { markOneSettings } from "./markone.js?v=13";
-import { pickChatModel, streamChat } from "./gemini.js?v=13";
+import { geminiSettings } from "./keys.js?v=14";
+import { pickChatModel, streamChat } from "./gemini.js?v=14";
 
 const GEMINI_PAUSE_MS = 10 * 60000;
 const WEBLLM_URL = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/lib/index.js";
@@ -66,14 +66,14 @@ export class Brain extends EventTarget {
   // Uses Gemini when Mark One has a key; otherwise starts loading the local
   // model in the background (replies use the free cloud until it's ready).
   async init() {
-    const { geminiKey, geminiModel } = await markOneSettings();
+    const { geminiKey, geminiModel } = await geminiSettings();
     if (geminiKey) {
       try {
         this.gemini = { key: geminiKey, model: await pickChatModel(geminiKey, geminiModel) };
-        this.setState("gemini", "Google Gemini brain (Mark One's key)");
+        this.setState("gemini", "Google Gemini brain");
         return;
       } catch (err) {
-        console.warn("Mark One's Gemini key didn't work", err);
+        console.warn("Mark One's key didn't work", err);
       }
     }
     try {
@@ -116,7 +116,7 @@ export class Brain extends EventTarget {
       // when space runs low.
       navigator.storage?.persist?.().catch(() => {});
       const { CreateWebWorkerMLCEngine } = await import(WEBLLM_URL);
-      const worker = new Worker(new URL("./llm-worker.js?v=13", import.meta.url), { type: "module" });
+      const worker = new Worker(new URL("./llm-worker.js?v=14", import.meta.url), { type: "module" });
       this.engine = await CreateWebWorkerMLCEngine(worker, modelId, {
         initProgressCallback: (r) => {
           const pct = Math.round((r.progress ?? 0) * 100);

@@ -64,6 +64,18 @@
 
   <section class="yaver" id="yaver" data-state="idle" aria-label="Yaver assistant">
     <div class="yaver-log" id="yaver-log" aria-live="polite"></div>
+    <div class="hud yaver-key" id="yaver-key" hidden>
+      <form id="yaver-key-form">
+        <p>Paste your free Gemini key once. Yaver keeps it in this browser for good, and only ever sends it to Google.
+          Get one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (Create API key, then copy).</p>
+        <input id="yaver-key-input" type="password" autocomplete="off" spellcheck="false" placeholder="AIza…" />
+        <div class="yaver-key-actions">
+          <button type="submit">Save</button>
+          <button type="button" id="yaver-key-cancel">Cancel</button>
+        </div>
+        <p class="yaver-key-error" id="yaver-key-error"></p>
+      </form>
+    </div>
     <form class="hud yaver-form" id="yaver-form">
       <input id="yaver-text" autocomplete="off" placeholder='Say "Yaver…", hold Space, or type' />
     </form>
@@ -73,6 +85,7 @@
         <div class="yaver-voice" id="yaver-voice"></div>
         <div class="yaver-hint" id="yaver-hint"></div>
         <div class="yaver-links">
+          <button type="button" class="yaver-link" id="yaver-key-link" hidden title="Free: makes Yaver answer instantly, in Google's natural voice">Add free Gemini key</button>
           <button type="button" class="yaver-link" id="yaver-connect" hidden title="Free, one click: makes Yaver much faster and smarter">Connect cloud brain</button>
           <button type="button" class="yaver-link" id="yaver-text-toggle">Show text</button>
         </div>
@@ -103,6 +116,6 @@
       if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () {});
     })();
   </script>
-  <script type="module" src="src/app.js?v=13"></script>
+  <script type="module" src="src/app.js?v=14"></script>
 </body>
 </html>

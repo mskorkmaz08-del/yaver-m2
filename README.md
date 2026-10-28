@@ -12,7 +12,9 @@ The app opens on **Yaver's home screen**, a big orb you talk to. To use the **3D
 
 ## Talking to Yaver
 
-Say **"Yaver"** and then your request, click the orb, or hold **Space** and talk. You can also type. Yaver answers out loud, as soon as you stop talking, and then keeps listening for about 8 seconds so you can reply without saying "Yaver" again. A new request interrupts whatever Yaver was saying. The transcript is hidden; "Show text" brings it back.
+**Fastest: Gemini Live.** Click "Add free Gemini key" under the orb and paste a free key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) once; it stays in this browser (Mark One's key is used automatically if it's there). Then "Yaver", the orb or Space starts a real-time voice conversation: your voice streams to Google and Yaver answers in under a second in the "Charon" voice. You can interrupt just by talking, it can search the web, and it runs studio commands. The conversation ends after 20 seconds of silence or a click on the orb.
+
+Without a key: say **"Yaver"** and then your request, click the orb, or hold **Space** and talk. You can also type. Yaver answers out loud, as soon as you stop talking, and then keeps listening for about 8 seconds so you can reply without saying "Yaver" again. A new request interrupts whatever Yaver was saying. The transcript is hidden; "Show text" brings it back.
 
 - **Studio commands** run instantly, and from the home screen they open the Studio first. Examples: "add two red cubes", "delete it", "make it bigger", "paint it green", "zoom in", "clear the scene", "show the gestures".
 - **Brain**, with nothing to type in:
@@ -43,6 +45,8 @@ Say **"Yaver"** and then your request, click the orb, or hold **Space** and talk
   - `voice.js`: listening and speaking.
   - `commands.js`: studio voice commands.
   - `brain.js`: Gemini, Puter, the local model or the last-resort fallback.
+  - `live.js`: the real-time Gemini Live conversation.
+  - `keys.js`: the Gemini key, pasted once.
   - `gemini.js`: Gemini chat and voice.
   - `markone.js`: reads Mark One's key from this browser.
   - `tts-worker.js`: the Kokoro voice.
