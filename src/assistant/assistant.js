@@ -1,9 +1,9 @@
 // Yaver, the talking assistant: wake word or button → speech to text →
 // studio command or language model → spoken, streamed answer.
-import { Brain } from "./brain.js?v=12";
-import { Listener, Speaker } from "./voice.js?v=12";
-import { parseCommand, navCommand, describeScene } from "./commands.js?v=12";
-import { markOneSettings } from "./markone.js?v=12";
+import { Brain } from "./brain.js?v=13";
+import { Listener, Speaker } from "./voice.js?v=13";
+import { parseCommand, navCommand, describeScene } from "./commands.js?v=13";
+import { markOneSettings } from "./markone.js?v=13";
 
 const HISTORY_KEY = "yaver-chat";
 const HISTORY_TURNS = 12; // messages kept for context (the local model's window is small)
@@ -20,7 +20,7 @@ function saveHistory(h) {
 function greeting() {
   const h = new Date().getHours();
   const part = h < 5 ? "Working late" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
-  return `${part}, sir. Yaver online. Say "Yaver" when you need me.`;
+  return `${part}, sir. Yaver online.`;
 }
 
 // `app` is { view() → "home" | "studio", openStudio() → Promise<studio API>,
@@ -35,12 +35,15 @@ export function startAssistant(app) {
     brain: document.getElementById("yaver-brain"),
     voice: document.getElementById("yaver-voice"),
     hint: document.getElementById("yaver-hint"),
+    connect: document.getElementById("yaver-connect"),
+    textToggle: document.getElementById("yaver-text-toggle"),
   };
   const brain = new Brain();
   const listener = new Listener();
   const speaker = new Speaker();
   let history = loadHistory();
   let busy = false;
+  let turn = 0; // each request gets a number; a newer one replaces an older one
 
   // ---- Look ------------------------------------------------------------------
 
@@ -69,27 +72,57 @@ export function startAssistant(app) {
   brain.addEventListener("state", () => {
     el.brain.textContent = brain.detail;
     el.brain.dataset.state = brain.state;
+    el.connect.hidden = !brain.needsSignIn;
   });
-  brain.addEventListener("waiting", (e) => {
-    el.brain.textContent = `Free cloud brain is pacing itself: ${e.detail}s (until my own brain finishes downloading)`;
+  // One click, once: a free Puter account for the fast cloud brain.
+  el.connect.addEventListener("click", async () => {
+    try {
+      await brain.connect();
+      speaker.say("Cloud brain connected, sir. I'm all yours.");
+    } catch (err) {
+      el.hint.textContent = err.message;
+    }
+  });
+
+  // It's a voice conversation: the transcript stays hidden unless he wants it
+  // (or the voice is still downloading, so text is all there is).
+  let wantText = false;
+  try { wantText = localStorage.getItem("yaver-show-text") === "1"; } catch {}
+  function showTextMode() {
+    el.root.dataset.text = wantText || !speaker.natural ? "on" : "off";
+    el.textToggle.textContent = wantText ? "Hide text" : "Show text";
+  }
+  el.textToggle.addEventListener("click", () => {
+    wantText = !wantText;
+    try { localStorage.setItem("yaver-show-text", wantText ? "1" : "0"); } catch {}
+    showTextMode();
   });
 
   // ---- Talking -----------------------------------------------------------------
+
+  // Where the next speakable piece of `text` ends (0: not yet). The very first
+  // piece may end at a comma, so the voice starts sooner.
+  function pieceEnd(text, first) {
+    const sentence = text.search(/[.!?…](\s|$)/);
+    const clause = first ? text.slice(24).search(/[,;:]\s/) : -1;
+    const ends = [sentence >= 1 ? sentence + 1 : -1, clause >= 0 ? clause + 25 : -1].filter((i) => i > 0);
+    return ends.length ? Math.min(...ends) : 0;
+  }
 
   // Speaks a reply as it streams in, one sentence at a time, so Yaver starts
   // talking before the whole answer is written.
   function sentenceSpeaker() {
     let buffer = "";
+    let first = true;
     let spoken = Promise.resolve();
     return {
       push(text) {
         buffer += text;
-        const re = /^[\s\S]*?[.!?…](\s|$)/;
-        let m;
-        while ((m = buffer.match(re)) && m[0].trim().length > 1) {
-          const sentence = m[0];
-          buffer = buffer.slice(sentence.length);
-          spoken = speaker.say(sentence);
+        let end;
+        while ((end = pieceEnd(buffer, first)) > 0) {
+          spoken = speaker.say(buffer.slice(0, end));
+          buffer = buffer.slice(end);
+          first = false;
         }
       },
       flush() {
@@ -100,9 +133,32 @@ export function startAssistant(app) {
     };
   }
 
+  // A brain that goes quiet for this long counts as failed, so Yaver never
+  // just hangs.
+  async function* timed(pieces, ms = 20000) {
+    const it = pieces[Symbol.asyncIterator]();
+    for (;;) {
+      let timer;
+      const next = await Promise.race([
+        it.next(),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Sorry sir, my brain didn't answer in time. Try me again.")), ms); }),
+      ]).finally(() => clearTimeout(timer));
+      if (next.done) return;
+      yield next.value;
+    }
+  }
+
+  // Says `text` and, when he's heard it, listens for his answer.
+  async function answer(text, my) {
+    await text;
+    if (my === turn) listener.followUp();
+  }
+
   async function handle(request) {
     request = request.trim();
-    if (!request || busy) return;
+    if (!request) return;
+    // A new request replaces whatever Yaver was still saying or thinking.
+    const my = ++turn;
     speaker.stop();
     if (interimLine) { interimLine.remove(); interimLine = null; }
     addLine("msg-you", request);
@@ -117,10 +173,12 @@ export function startAssistant(app) {
     else if (nav === "home") { app.goHome(); done = "Back to the home screen."; }
     else if (action) done = action(app.view() === "studio" ? app.studio() : await app.openStudio());
     if (done) {
+      busy = false;
       addLine("msg-yaver", done);
-      speaker.say(done);
       history.push({ role: "user", content: request }, { role: "assistant", content: done });
       saveHistory(history);
+      refreshLook();
+      answer(speaker.say(done), my);
       return;
     }
 
@@ -135,7 +193,8 @@ export function startAssistant(app) {
       { role: "user", content: request },
     ];
     try {
-      for await (const piece of brain.reply(messages)) {
+      for await (const piece of timed(brain.reply(messages))) {
+        if (my !== turn) return; // he asked something else meanwhile
         reply += piece;
         line.textContent = reply;
         el.log.scrollTop = el.log.scrollHeight;
@@ -146,14 +205,20 @@ export function startAssistant(app) {
       history.push({ role: "user", content: request }, { role: "assistant", content: reply });
       saveHistory(history);
     } catch (err) {
-      reply = err.message || "Something went wrong in my head, sir.";
-      line.textContent = reply;
-      line.classList.add("error");
-      voice.push(reply);
+      if (my !== turn) return;
+      console.warn(err);
+      // Keep what was already said; otherwise say what went wrong.
+      if (!reply.trim()) {
+        reply = err.message || "Something went wrong in my head, sir.";
+        line.textContent = reply;
+        line.classList.add("error");
+        voice.push(reply);
+      }
     }
+    if (my !== turn) return;
     busy = false;
-    voice.flush();
     refreshLook();
+    answer(voice.flush(), my);
   }
 
   // ---- Listening ---------------------------------------------------------------
@@ -184,13 +249,15 @@ export function startAssistant(app) {
       : "Voice: built-in (the natural voice couldn't load)";
   }
   speaker.addEventListener("progress", (e) => { if (speaker.loading) showVoice(e.detail); });
-  speaker.addEventListener("failed", () => showVoice());
+  speaker.addEventListener("failed", () => { showVoice(); showTextMode(); });
   showVoice();
+  showTextMode();
   // The first time, the voice downloads after the greeting: say hello once it can.
   let voiced = false;
   let greetedAloud = false;
   speaker.addEventListener("ready", () => {
     showVoice();
+    showTextMode();
     if (voiced) return;
     voiced = true;
     if (!greetedAloud && !speaker.speaking) speaker.say("Voice systems online, sir.");

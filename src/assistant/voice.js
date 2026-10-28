@@ -1,4 +1,4 @@
-import { synth as geminiSynth } from "./gemini.js?v=12";
+import { synth as geminiSynth } from "./gemini.js?v=13";
 
 // Listening and speaking, with no keys needed. Listening uses Chrome's speech
 // recognition (Chrome sends the audio to Google to turn it into text);
@@ -6,7 +6,9 @@ import { synth as geminiSynth } from "./gemini.js?v=12";
 
 // Ways speech recognition tends to hear "Yaver".
 const WAKE = /\b(?:hey\s+|ok\s+|okay\s+)?(?:yaver|yavar|yavor|yawer|javer|jabber|java|jarvis|yahweh|ya\s?ver|yeah\s?ver|y\s?aver)\b[\s,.!?]*/i;
-const COMMAND_TIMEOUT_MS = 7000; // after "Yaver", how long to wait for the request
+const COMMAND_TIMEOUT_MS = 7000;  // after "Yaver", how long to wait for the request
+const FOLLOW_UP_MS = 8000;        // after Yaver answers, how long to listen for a reply
+const END_OF_SPEECH_MS = 750;     // this much silence ends a request (Chrome itself waits longer)
 
 export class Listener extends EventTarget {
   constructor(lang = "en-US") {
@@ -25,7 +27,7 @@ export class Listener extends EventTarget {
     this.rec.onstart = () => { this.running = true; };
     this.rec.onend = () => {
       this.running = false;
-      if (this.enabled && !this.paused) setTimeout(() => this.startRec(), 250);
+      if (this.enabled && !this.paused) setTimeout(() => this.startRec(), 50);
     };
     this.rec.onerror = (e) => {
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
@@ -60,8 +62,16 @@ export class Listener extends EventTarget {
 
   pause(on) {
     this.paused = on;
+    clearTimeout(this.silenceTimer);
     if (on) this.rec?.abort();
     else this.startRec();
+  }
+
+  // After Yaver answers: listen for a reply without needing "Yaver" again,
+  // so it's a normal back-and-forth conversation.
+  followUp() {
+    this.setMode("command", FOLLOW_UP_MS);
+    if (this.paused) this.pause(false);
   }
 
   // Skip the wake word: take the next thing said as a request (the orb
@@ -72,11 +82,12 @@ export class Listener extends EventTarget {
     else if (this.paused) this.pause(false);
   }
 
-  setMode(mode) {
+  setMode(mode, timeout = COMMAND_TIMEOUT_MS) {
     this.mode = mode;
     clearTimeout(this.commandTimer);
+    clearTimeout(this.silenceTimer);
     if (mode === "command") {
-      this.commandTimer = setTimeout(() => { this.setMode("wake"); }, COMMAND_TIMEOUT_MS);
+      this.commandTimer = setTimeout(() => { this.setMode("wake"); }, timeout);
     }
     this.emit("mode", mode);
   }
@@ -96,11 +107,23 @@ export class Listener extends EventTarget {
     if (this.mode === "command") {
       clearTimeout(this.commandTimer);
       this.commandTimer = setTimeout(() => this.setMode("wake"), COMMAND_TIMEOUT_MS);
-      this.emit("interim", interim.replace(WAKE, "").trim());
+      const request = interim.replace(WAKE, "").trim();
+      this.emit("interim", request);
+      // Answer as soon as he stops talking, instead of waiting for Chrome to
+      // decide the sentence is over. Restarting drops Chrome's late copy.
+      clearTimeout(this.silenceTimer);
+      if (request) {
+        this.silenceTimer = setTimeout(() => {
+          if (this.mode !== "command" || this.paused) return;
+          this.rec.abort();
+          this.finish(request);
+        }, END_OF_SPEECH_MS);
+      }
     }
   }
 
   handleFinal(text) {
+    clearTimeout(this.silenceTimer);
     const m = text.match(WAKE);
     if (this.mode === "wake") {
       if (!m) return;
@@ -191,6 +214,7 @@ class SystemSpeaker extends EventTarget {
 // Both go through the same subtle "JARVIS" effect as Mark One.
 const KOKORO_VOICE = "bm_george";
 const GEMINI_PAUSE_MS = 10 * 60000;
+const SYNTH_TIMEOUT_MS = 15000;
 
 class NeuralSpeaker extends EventTarget {
   constructor() {
@@ -207,11 +231,12 @@ class NeuralSpeaker extends EventTarget {
     this.source = null;
     this.ctx = null;
     this.chain = null;
-    this.worker = new Worker(new URL("./tts-worker.js?v=12", import.meta.url), { type: "module" });
+    this.worker = new Worker(new URL("./tts-worker.js?v=13", import.meta.url), { type: "module" });
     this.worker.onmessage = ({ data }) => {
       if (data.type === "progress") this.dispatchEvent(new CustomEvent("progress", { detail: data.pct }));
       else if (data.type === "ready") { this.kokoroReady = true; this.dispatchEvent(new Event("ready")); }
       else if (data.type === "error") this.kokoroFailed(data.message);
+      else if (data.type === "begin") this.pending.get(data.id)?.begin();
       else if (data.type === "audio") { this.pending.get(data.id)?.(data); this.pending.delete(data.id); }
     };
     this.worker.onerror = (e) => this.kokoroFailed(e.message);
@@ -268,15 +293,24 @@ class NeuralSpeaker extends EventTarget {
     if (!this.kokoroReady) return Promise.resolve(null);
     const id = this.nextId++;
     return new Promise((resolve) => {
-      this.pending.set(id, (d) => resolve(d.error ? null : { samples: d.samples, rate: d.rate }));
-      this.worker.postMessage({ type: "speak", id, text, voice: KOKORO_VOICE, speed: 1 });
+      // Never wait forever: a sentence stuck for long after the worker
+      // started on it is skipped (the clock starts then, not while it waits
+      // for the sentences before it).
+      let timer;
+      const job = (d) => { clearTimeout(timer); resolve(d.error ? null : { samples: d.samples, rate: d.rate }); };
+      job.begin = () => { timer = setTimeout(() => { this.pending.delete(id); resolve(null); }, SYNTH_TIMEOUT_MS); };
+      this.pending.set(id, job);
+      this.worker.postMessage({ type: "speak", id, text, voice: KOKORO_VOICE, speed: 1.05 });
     });
   }
 
   async synth(text) {
     if (this.geminiOn) {
       try {
-        return await geminiSynth(this.gemini.key, text, this.gemini.voice);
+        return await Promise.race([
+          geminiSynth(this.gemini.key, text, this.gemini.voice),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("timed out")), SYNTH_TIMEOUT_MS)),
+        ]);
       } catch (err) {
         console.warn("Google voice failed, using Kokoro for a while", err);
         this.geminiPausedUntil = Date.now() + GEMINI_PAUSE_MS;
@@ -329,6 +363,9 @@ class NeuralSpeaker extends EventTarget {
 
   stop() {
     this.epoch++;
+    // Drop sentences Kokoro hasn't voiced yet, so the next answer isn't
+    // stuck behind them.
+    this.worker.postMessage({ type: "cancel", before: this.nextId });
     try { this.source?.stop(); } catch {}
     this.source = null;
     this.playing = Promise.resolve();

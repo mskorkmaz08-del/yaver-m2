@@ -72,6 +72,10 @@
         <div class="yaver-brain" id="yaver-brain">Starting…</div>
         <div class="yaver-voice" id="yaver-voice"></div>
         <div class="yaver-hint" id="yaver-hint"></div>
+        <div class="yaver-links">
+          <button type="button" class="yaver-link" id="yaver-connect" hidden title="Free, one click: makes Yaver much faster and smarter">Connect cloud brain</button>
+          <button type="button" class="yaver-link" id="yaver-text-toggle">Show text</button>
+        </div>
       </div>
       <button class="yaver-orb" id="yaver-orb" title="Talk to Yaver (or hold Space)" aria-label="Talk to Yaver">
         <span class="ring r1"></span><span class="ring r2"></span><span class="core"></span>
@@ -99,6 +103,6 @@
       if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () {});
     })();
   </script>
-  <script type="module" src="src/app.js?v=12"></script>
+  <script type="module" src="src/app.js?v=13"></script>
 </body>
 </html>
