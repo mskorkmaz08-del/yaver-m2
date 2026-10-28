@@ -6,16 +6,24 @@ The first feature is **Yaver Studio**. You pinch shapes from a shelf, move them 
 
 Live at https://mskorkmaz08-del.github.io/yaver-m2/. In Chrome, install it with the install icon in the address bar, then use **Keep in Dock**.
 
+## Using it
+
+The app opens on **Yaver's home screen**, a big orb you talk to. To use the **3D Studio**, click the 3D Studio button or say "open the studio". To come back, use the ← button, press Esc, or say "go home". The camera only runs while the Studio is open.
+
 ## Talking to Yaver
 
-Say **"Yaver"** and then your request, click the glowing orb, or hold **Space** and talk. You can also type in the box above the orb. Yaver answers out loud.
+Say **"Yaver"** and then your request, click the orb, or hold **Space** and talk. You can also type. Yaver answers out loud.
 
-- **Studio commands** run instantly. Examples: "add two red cubes", "delete it", "make it bigger", "paint it green", "zoom in", "clear the scene", "show the gestures".
-- **Everything else** goes to Yaver's brain, which needs no API key.
-  - Normally the brain is a small AI model (Qwen 3.5, 2B) that runs on your own computer through WebLLM and WebGPU. The first launch downloads it once (about 1.5 GB). After that it works offline, privately and without limits.
-  - While it downloads, or if the browser can't run it, Yaver uses the free Pollinations cloud API, which allows about one answer every 30 seconds.
-  - Add `?brain=smart` to the address to use the bigger 4B model, which needs about 4 GB of graphics memory.
-- **Voice:** listening uses Chrome's built-in speech recognition, and speaking uses the computer's own voices ("Daniel" on a Mac).
+- **Studio commands** run instantly, and from the home screen they open the Studio first. Examples: "add two red cubes", "delete it", "make it bigger", "paint it green", "zoom in", "clear the scene", "show the gestures".
+- **Brain**, with nothing to type in:
+  - If Yaver Mark One (the first app, on the same site) already has a free Google Gemini key in this browser, Mark II reuses it automatically: Gemini answers, fast. Mark One's data is only read, never changed.
+  - Otherwise a small model runs on the computer itself (Qwen 3.5 2B via WebLLM). It downloads once, about 1.5 GB, and then works offline. Until then, Pollinations' free keyless API answers, about once every 30 seconds.
+  - Add `?brain=smart` to the address to use the 4B local model.
+- **Voice**, the same tone as Mark One:
+  - With Mark One's key, Google's "Charon" voice.
+  - Otherwise Kokoro "George", a natural British voice that runs on the computer and downloads once.
+  - Either way, Mark One's subtle JARVIS effect is applied. Until one of these is ready, the computer's built-in voice is used.
+- **Listening** uses Chrome's built-in speech recognition.
 
 ## Code
 
@@ -27,16 +35,20 @@ Say **"Yaver"** and then your request, click the glowing orb, or hold **Space** 
 - `src/hand3d.js`: draws the pointers.
 - `src/shelf.js`: the shape shelf.
 - `src/helpicons.js`: the help icons.
-- `src/main.js`: wires it all together.
+- `src/app.js`: the app shell (home screen, opening and closing the Studio).
+- `src/studio.js`: the 3D Studio, loaded the first time it's opened.
 - `src/assistant/`: the voice assistant.
   - `assistant.js`: transcript, orb and wiring.
   - `voice.js`: listening and speaking.
   - `commands.js`: studio voice commands.
-  - `brain.js`: local model plus cloud fallback.
+  - `brain.js`: Gemini, the local model or the cloud fallback.
+  - `gemini.js`: Gemini chat and voice.
+  - `markone.js`: reads Mark One's key from this browser.
+  - `tts-worker.js`: the Kokoro voice.
   - `llm-worker.js`: runs the model off the main thread.
 - `manifest.webmanifest`, `icons/`, `sw.js`: make it an installable app.
 
-Bump the `?v=` number in `index.html` and on every `?v=` import (`src/main.js`, `src/shelf.js`, `src/assistant/*.js`) on every change, so browsers fetch the new files.
+Bump the `?v=` number in `index.html` and on every `?v=` import (`src/app.js`, `src/studio.js`, `src/shelf.js`, `src/assistant/*.js`) on every change, so browsers fetch the new files.
 
 ## Roadmap
 

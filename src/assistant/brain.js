@@ -1,10 +1,16 @@
-// Yaver's brain. Two free sources, neither needs an API key:
+// Yaver's brain. If Mark One already has a free Google Gemini key in this
+// browser, Yaver thinks with Gemini (fast and smart; see markone.js).
+// Otherwise, two free sources that need no key at all:
 //  - Local: a small language model (Qwen 3.5) that runs on this computer's
 //    graphics chip through WebLLM. It downloads once (about 1.5 GB), then
 //    works offline, privately and without limits.
 //  - Cloud: Pollinations' free text API, used while the local model is
 //    still downloading or if this browser can't run it. It allows about one
 //    request every 30 seconds.
+import { markOneSettings } from "./markone.js?v=11";
+import { pickChatModel, streamChat } from "./gemini.js?v=11";
+
+const GEMINI_PAUSE_MS = 10 * 60000;
 const WEBLLM_URL = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/lib/index.js";
 const CLOUD_URL = "https://text.pollinations.ai/";
 const CLOUD_GAP_MS = 30000;
@@ -26,7 +32,10 @@ export class Brain extends EventTarget {
   constructor() {
     super();
     this.engine = null;
-    this.state = "starting"; // starting | loading | local | cloud | offline
+    this.state = "starting"; // starting | gemini | loading | local | cloud
+    this.gemini = null;       // { key, model }
+    this.geminiPausedUntil = 0;
+    this.localStarted = false;
     this.detail = "";
     this.lastCloudAt = -Infinity;
   }
@@ -37,9 +46,25 @@ export class Brain extends EventTarget {
     this.dispatchEvent(new Event("state"));
   }
 
-  // Starts loading the local model in the background. Replies use the cloud
-  // until it is ready.
+  // Uses Gemini when Mark One has a key; otherwise starts loading the local
+  // model in the background (replies use the free cloud until it's ready).
   async init() {
+    const { geminiKey, geminiModel } = await markOneSettings();
+    if (geminiKey) {
+      try {
+        this.gemini = { key: geminiKey, model: await pickChatModel(geminiKey, geminiModel) };
+        this.setState("gemini", "Google Gemini brain (Mark One's key)");
+        return;
+      } catch (err) {
+        console.warn("Mark One's Gemini key didn't work", err);
+      }
+    }
+    return this.initLocal();
+  }
+
+  async initLocal() {
+    if (this.localStarted) return;
+    this.localStarted = true;
     const gpu = navigator.gpu && (await navigator.gpu.requestAdapter().catch(() => null));
     if (!gpu) {
       this.setState("cloud", "This browser can't run the local model, using the free cloud brain");
@@ -53,7 +78,7 @@ export class Brain extends EventTarget {
       // when space runs low.
       navigator.storage?.persist?.().catch(() => {});
       const { CreateWebWorkerMLCEngine } = await import(WEBLLM_URL);
-      const worker = new Worker(new URL("./llm-worker.js?v=10", import.meta.url), { type: "module" });
+      const worker = new Worker(new URL("./llm-worker.js?v=11", import.meta.url), { type: "module" });
       this.engine = await CreateWebWorkerMLCEngine(worker, modelId, {
         initProgressCallback: (r) => {
           const pct = Math.round((r.progress ?? 0) * 100);
@@ -71,6 +96,24 @@ export class Brain extends EventTarget {
 
   // Yields the reply in pieces as it is written.
   async *reply(messages) {
+    if (this.gemini && Date.now() > this.geminiPausedUntil) {
+      let any = false;
+      try {
+        for await (const piece of streamChat(this.gemini.key, this.gemini.model, messages)) {
+          any = true;
+          yield piece;
+        }
+        if (any) return;
+      } catch (err) {
+        if (any) throw err;
+        // Free limit reached or Google unreachable: use the free sources for a
+        // while, and start getting the local brain ready.
+        console.warn("Gemini failed, switching brains for a while", err);
+        this.geminiPausedUntil = Date.now() + GEMINI_PAUSE_MS;
+        this.setState("cloud", "Gemini is resting, using a free brain for a few minutes");
+        this.initLocal();
+      }
+    }
     if (this.engine) {
       try {
         yield* this.replyLocal(messages);

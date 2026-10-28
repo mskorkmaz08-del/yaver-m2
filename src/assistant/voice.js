@@ -1,3 +1,5 @@
+import { synth as geminiSynth } from "./gemini.js?v=11";
+
 // Listening and speaking, both built into Chrome, so no keys are needed.
 // Listening uses the browser's speech recognition (Chrome sends the audio to
 // Google to turn it into text); speaking uses the voices on this computer.
@@ -117,11 +119,14 @@ export class Listener extends EventTarget {
   }
 }
 
-// Picks a calm British male voice when the computer has one (macOS has
-// "Daniel"), for the proper butler feel.
+// ---- Speaking -------------------------------------------------------------------
+
+// The computer's built-in voices: available instantly but robotic. Used until
+// the natural voice below has loaded, or if it can't run. Picks a British male
+// voice when there is one (macOS has "Daniel").
 const PREFERRED = ["Daniel", "Arthur", "Google UK English Male", "Oliver", "Malcolm", "George"];
 
-export class Speaker extends EventTarget {
+class SystemSpeaker extends EventTarget {
   constructor() {
     super();
     this.supported = "speechSynthesis" in window;
@@ -174,5 +179,192 @@ export class Speaker extends EventTarget {
     if (!this.supported) return;
     speechSynthesis.cancel();
     if (this.queue) { this.queue = 0; this.dispatchEvent(new Event("end")); }
+  }
+}
+
+// The natural voices. Two sources, both free:
+//  - Google's "Charon" (the voice Mark One uses), when Mark One's Gemini key
+//    is in this browser. The free tier is small, so if it runs out Yaver
+//    switches to Kokoro for a while.
+//  - Kokoro "George", a calm British neural voice that runs on this computer
+//    (tts-worker.js), downloaded once (about 90–300 MB).
+// Both go through the same subtle "JARVIS" effect as Mark One.
+const KOKORO_VOICE = "bm_george";
+const GEMINI_PAUSE_MS = 10 * 60000;
+
+class NeuralSpeaker extends EventTarget {
+  constructor() {
+    super();
+    this.kokoroReady = false;
+    this.failed = false;
+    this.gemini = null;          // { key, voice } when Mark One has a key
+    this.geminiPausedUntil = 0;
+    this.queue = 0;
+    this.nextId = 0;
+    this.pending = new Map();    // Kokoro job id -> resolve(result)
+    this.playing = Promise.resolve();
+    this.epoch = 0;              // bumped by stop(), so queued audio is dropped
+    this.source = null;
+    this.ctx = null;
+    this.chain = null;
+    this.worker = new Worker(new URL("./tts-worker.js?v=11", import.meta.url), { type: "module" });
+    this.worker.onmessage = ({ data }) => {
+      if (data.type === "progress") this.dispatchEvent(new CustomEvent("progress", { detail: data.pct }));
+      else if (data.type === "ready") { this.kokoroReady = true; this.dispatchEvent(new Event("ready")); }
+      else if (data.type === "error") this.kokoroFailed(data.message);
+      else if (data.type === "audio") { this.pending.get(data.id)?.(data); this.pending.delete(data.id); }
+    };
+    this.worker.onerror = (e) => this.kokoroFailed(e.message);
+    this.worker.postMessage({ type: "load" });
+  }
+
+  kokoroFailed(message) {
+    this.failed = true;
+    console.warn("Kokoro voice unavailable:", message);
+    this.dispatchEvent(new Event("failed"));
+  }
+
+  useGemini(key, voice) {
+    this.gemini = { key, voice: voice || "Charon" };
+    this.dispatchEvent(new Event("ready"));
+  }
+
+  get geminiOn() { return Boolean(this.gemini) && Date.now() > this.geminiPausedUntil; }
+  get ready() { return this.geminiOn || this.kokoroReady; }
+  get name() { return this.geminiOn ? `Google "${this.gemini.voice}"` : this.kokoroReady ? 'Kokoro "George"' : "built-in"; }
+  get speaking() { return this.queue > 0; }
+
+  // Browsers only allow sound after the person has clicked or pressed a key.
+  get blocked() { return !this.ctx || this.ctx.state !== "running"; }
+  unlock() {
+    this.ctx ??= new AudioContext();
+    if (this.ctx.state === "suspended") this.ctx.resume().catch(() => {});
+  }
+
+  // Mark One's "JARVIS" touch: trim the boom, lift the presence a little and
+  // add a very short metallic echo.
+  output() {
+    if (this.chain) return this.chain;
+    const ctx = this.ctx;
+    const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 140;
+    const pres = ctx.createBiquadFilter(); pres.type = "peaking"; pres.frequency.value = 3200; pres.gain.value = 3; pres.Q.value = 0.9;
+    const dry = ctx.createGain(); dry.gain.value = 0.9;
+    const echo = ctx.createDelay(0.05); echo.delayTime.value = 0.012;
+    const fb = ctx.createGain(); fb.gain.value = 0.25;
+    const wet = ctx.createGain(); wet.gain.value = 0.22;
+    hp.connect(pres); pres.connect(dry); dry.connect(ctx.destination);
+    pres.connect(echo); echo.connect(fb); fb.connect(echo); echo.connect(wet); wet.connect(ctx.destination);
+    return (this.chain = hp);
+  }
+
+  kokoro(text) {
+    if (!this.kokoroReady) return Promise.resolve(null);
+    const id = this.nextId++;
+    return new Promise((resolve) => {
+      this.pending.set(id, (d) => resolve(d.error ? null : { samples: d.samples, rate: d.rate }));
+      this.worker.postMessage({ type: "speak", id, text, voice: KOKORO_VOICE, speed: 1 });
+    });
+  }
+
+  async synth(text) {
+    if (this.geminiOn) {
+      try {
+        return await geminiSynth(this.gemini.key, text, this.gemini.voice);
+      } catch (err) {
+        console.warn("Google voice failed, using Kokoro for a while", err);
+        this.geminiPausedUntil = Date.now() + GEMINI_PAUSE_MS;
+        this.dispatchEvent(new Event("ready"));
+      }
+    }
+    return this.kokoro(text);
+  }
+
+  // Resolves when spoken. `fallback(text)` speaks a piece that couldn't be
+  // voiced naturally with the built-in voice.
+  say(text, fallback) {
+    text = text.replace(/[*_#`>]+/g, "").trim();
+    if (!text) return Promise.resolve();
+    this.unlock();
+    const epoch = this.epoch;
+    // Start voicing right away, so the next sentence is ready while this one
+    // plays; play them strictly in order.
+    const audio = this.synth(text);
+    if (!this.queue) this.dispatchEvent(new Event("start"));
+    this.queue++;
+    const done = () => {
+      if (epoch !== this.epoch) return;
+      this.queue = Math.max(0, this.queue - 1);
+      if (!this.queue) this.dispatchEvent(new Event("end"));
+    };
+    this.playing = this.playing.then(async () => {
+      const a = await audio;
+      if (epoch !== this.epoch) return done();
+      if (a?.samples?.length && this.ctx.state === "running") await this.play(a.samples, a.rate);
+      else await fallback?.(text);
+      done();
+    });
+    return this.playing;
+  }
+
+  play(samples, rate) {
+    return new Promise((resolve) => {
+      const buf = this.ctx.createBuffer(1, samples.length, rate);
+      buf.copyToChannel(samples, 0);
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(this.output());
+      src.onended = () => { if (this.source === src) this.source = null; resolve(); };
+      this.source = src;
+      src.start();
+    });
+  }
+
+  stop() {
+    this.epoch++;
+    try { this.source?.stop(); } catch {}
+    this.source = null;
+    this.playing = Promise.resolve();
+    if (this.queue) { this.queue = 0; this.dispatchEvent(new Event("end")); }
+  }
+}
+
+// What the assistant talks through: the natural voice once it's ready, the
+// built-in voice until then (and if the natural one can't run).
+export class Speaker extends EventTarget {
+  constructor() {
+    super();
+    this.system = new SystemSpeaker();
+    this.neural = null;
+    try { this.neural = new NeuralSpeaker(); } catch (err) { console.warn("No natural voice", err); }
+    for (const s of [this.system, this.neural].filter(Boolean)) {
+      s.addEventListener("start", () => this.dispatchEvent(new Event("start")));
+      s.addEventListener("end", () => { if (!this.speaking) this.dispatchEvent(new Event("end")); });
+    }
+    this.neural?.addEventListener("progress", (e) => this.dispatchEvent(new CustomEvent("progress", { detail: e.detail })));
+    this.neural?.addEventListener("ready", () => this.dispatchEvent(new Event("ready")));
+    this.neural?.addEventListener("failed", () => this.dispatchEvent(new Event("failed")));
+  }
+
+  get active() { return this.neural?.ready ? this.neural : this.system; }
+  get speaking() { return this.system.speaking || Boolean(this.neural?.speaking); }
+  get natural() { return this.active === this.neural; }
+  get blocked() { return this.active.blocked; }
+  set blocked(v) { this.system.blocked = v; }
+
+  get voiceName() { return this.natural ? this.neural.name : "built-in"; }
+
+  // Call from a click or key press: lets the natural voice make sound.
+  unlock() { this.neural?.unlock(); }
+
+  useGemini(key, voice) { this.neural?.useGemini(key, voice); }
+
+  say(text) {
+    if (this.active === this.neural) return this.neural.say(text, (t) => this.system.say(t));
+    return this.system.say(text);
+  }
+
+  stop() {
+    this.system.stop();
+    this.neural?.stop();
   }
 }

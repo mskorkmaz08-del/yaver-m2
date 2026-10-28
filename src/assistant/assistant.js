@@ -1,13 +1,14 @@
 // Yaver, the talking assistant: wake word or button → speech to text →
 // studio command or language model → spoken, streamed answer.
-import { Brain } from "./brain.js?v=10";
-import { Listener, Speaker } from "./voice.js?v=10";
-import { runCommand, describeScene } from "./commands.js?v=10";
+import { Brain } from "./brain.js?v=11";
+import { Listener, Speaker } from "./voice.js?v=11";
+import { parseCommand, navCommand, describeScene } from "./commands.js?v=11";
+import { markOneSettings } from "./markone.js?v=11";
 
 const HISTORY_KEY = "yaver-chat";
 const HISTORY_TURNS = 12; // messages kept for context (the local model's window is small)
 
-const PERSONA = `You are Yaver, Mustafa's personal AI assistant, in the spirit of JARVIS from Iron Man: calm, loyal, quick, with a dry British wit. You speak out loud, so answer in one to three short sentences of plain spoken English, with no lists, markdown, emoji or code unless he asks for detail. Call him "sir" now and then, not every time. You live inside Yaver Mark II, a 3D studio he controls with hand gestures through the webcam; the app itself already handles studio voice commands like "add a red cube", "delete it", "make it bigger", "paint it green", "zoom in" and "clear the scene", so if he asks how to do something in the studio, tell him the command or gesture. You cannot browse the internet yet, so for live news, weather or prices say you can't check that yet. Never make up facts; say when you're unsure.`;
+const PERSONA = `You are Yaver, Mustafa's personal AI assistant. Speak like JARVIS: calm, precise and understated, with British English and a touch of dry wit; now and then address him as "sir", not every time. No American filler. This is a voice conversation: you are heard, not read, so answer in one to three short spoken sentences, with no lists, markdown, emoji or code unless he asks for detail. You live in Yaver Mark II. Its home screen is you; from there he can open the 3D Studio (say "open the studio"), where he builds things with hand gestures through the webcam. The app itself handles studio commands like "add a red cube", "delete it", "make it bigger", "paint it green", "zoom in" and "clear the scene", so if he asks how to do something there, tell him the command or gesture. You can't browse the internet yet, so for live news, weather or prices say you can't check that yet. Never make up facts; say when you're unsure.`;
 
 function loadHistory() {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch { return []; }
@@ -22,7 +23,9 @@ function greeting() {
   return `${part}, sir. Yaver online. Say "Yaver" when you need me.`;
 }
 
-export function startAssistant(studio) {
+// `app` is { view() → "home" | "studio", openStudio() → Promise<studio API>,
+// goHome(), studio() → studio API or null if never opened } from app.js.
+export function startAssistant(app) {
   const el = {
     root: document.getElementById("yaver"),
     orb: document.getElementById("yaver-orb"),
@@ -30,6 +33,7 @@ export function startAssistant(studio) {
     form: document.getElementById("yaver-form"),
     input: document.getElementById("yaver-text"),
     brain: document.getElementById("yaver-brain"),
+    voice: document.getElementById("yaver-voice"),
     hint: document.getElementById("yaver-hint"),
   };
   const brain = new Brain();
@@ -103,8 +107,15 @@ export function startAssistant(studio) {
     if (interimLine) { interimLine.remove(); interimLine = null; }
     addLine("msg-you", request);
 
-    // Studio commands are instant and never need the model.
-    const done = runCommand(request, studio);
+    // Opening and leaving the studio, and studio commands, are instant and
+    // never need the model. A studio command from the home screen opens the
+    // studio first.
+    const nav = navCommand(request);
+    const action = nav ? null : parseCommand(request);
+    let done = null;
+    if (nav === "studio") { done = app.view() === "studio" ? "We're already in the studio, sir." : "Opening the studio."; app.openStudio(); }
+    else if (nav === "home") { app.goHome(); done = "Back to the home screen."; }
+    else if (action) done = action(app.view() === "studio" ? app.studio() : await app.openStudio());
     if (done) {
       addLine("msg-yaver", done);
       speaker.say(done);
@@ -119,7 +130,7 @@ export function startAssistant(studio) {
     const voice = sentenceSpeaker();
     let reply = "";
     const messages = [
-      { role: "system", content: `${PERSONA}\nIt is now ${new Date().toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}. ${describeScene(studio.editor)}` },
+      { role: "system", content: `${PERSONA}\nIt is now ${new Date().toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}. ${describeScene(app.view() === "studio" ? app.studio()?.editor : null)}` },
       ...history.slice(-HISTORY_TURNS),
       { role: "user", content: request },
     ];
@@ -165,6 +176,22 @@ export function startAssistant(studio) {
   speaker.addEventListener("start", () => { listener.pause(true); refreshLook(); });
   speaker.addEventListener("end", () => { listener.pause(false); refreshLook(); });
 
+  // ---- Voice status ------------------------------------------------------------
+
+  function showVoice(extra = "") {
+    el.voice.textContent = `Voice: ${speaker.voiceName}${extra}`;
+  }
+  speaker.addEventListener("progress", (e) => { if (!speaker.natural) showVoice(`, natural voice downloading ${e.detail}%`); });
+  speaker.addEventListener("ready", () => showVoice());
+  speaker.addEventListener("failed", () => showVoice());
+  showVoice();
+  markOneSettings().then(({ geminiKey, ttsVoice }) => {
+    if (geminiKey) speaker.useGemini(geminiKey, ttsVoice || "Charon");
+  });
+
+  // Sound may only start after a click or key press.
+  for (const type of ["pointerdown", "keydown"]) window.addEventListener(type, () => speaker.unlock(), { capture: true });
+
   el.orb.addEventListener("click", () => {
     if (speaker.speaking) { speaker.stop(); return; }
     listener.listenNow();
@@ -202,7 +229,8 @@ export function startAssistant(studio) {
       window.removeEventListener("pointerdown", once, true);
       window.removeEventListener("keydown", once, true);
       speaker.blocked = false;
-      speaker.say(hello);
+      speaker.unlock();
+      setTimeout(() => speaker.say(hello), 50);
     };
     window.addEventListener("pointerdown", once, true);
     window.addEventListener("keydown", once, true);

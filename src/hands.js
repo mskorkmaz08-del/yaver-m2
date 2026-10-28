@@ -26,6 +26,7 @@ export class HandTracker {
     });
     this.video.srcObject = stream;
     await this.video.play();
+    if (this.landmarker) return; // restarting the camera after stop()
 
     const vision = await FilesetResolver.forVisionTasks(WASM_URL);
     const options = (delegate) => ({
@@ -41,6 +42,12 @@ export class HandTracker {
     } catch {
       this.landmarker = await HandLandmarker.createFromOptions(vision, options("CPU"));
     }
+  }
+
+  // Turns the camera off (the light goes out). start() turns it back on.
+  stop() {
+    this.video.srcObject?.getTracks().forEach((t) => t.stop());
+    this.video.srcObject = null;
   }
 
   // Returns [{ id: "Left" | "Right", landmarks: [{x, y, z}...21] }].
