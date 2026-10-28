@@ -1,7 +1,7 @@
 // Yaver Mark II. The home screen is Yaver himself; the 3D Studio opens on top
 // of it (button, "open the studio", or the #studio address) and is loaded the
 // first time it's needed, so the camera only runs while you're in it.
-import { startAssistant } from "./assistant/assistant.js?v=11";
+import { startAssistant } from "./assistant/assistant.js?v=12";
 
 const VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 for (const el of document.querySelectorAll(".app-version")) el.textContent = `v${VERSION}`;
@@ -20,7 +20,7 @@ function show(name) {
 async function openStudio() {
   if (location.hash !== "#studio") history.pushState(null, "", "#studio");
   show("studio");
-  opening ??= import("./studio.js?v=11").then((m) => {
+  opening ??= import("./studio.js?v=12").then((m) => {
     studio = m;
     if (view() !== "studio") studio.pause(); // went home while it was loading
   });
