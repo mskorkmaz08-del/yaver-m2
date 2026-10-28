@@ -7,8 +7,8 @@
 //  - Cloud: Pollinations' free text API, used while the local model is
 //    still downloading or if this browser can't run it. It allows about one
 //    request every 30 seconds.
-import { markOneSettings } from "./markone.js?v=11";
-import { pickChatModel, streamChat } from "./gemini.js?v=11";
+import { markOneSettings } from "./markone.js?v=12";
+import { pickChatModel, streamChat } from "./gemini.js?v=12";
 
 const GEMINI_PAUSE_MS = 10 * 60000;
 const WEBLLM_URL = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/lib/index.js";
@@ -78,7 +78,7 @@ export class Brain extends EventTarget {
       // when space runs low.
       navigator.storage?.persist?.().catch(() => {});
       const { CreateWebWorkerMLCEngine } = await import(WEBLLM_URL);
-      const worker = new Worker(new URL("./llm-worker.js?v=11", import.meta.url), { type: "module" });
+      const worker = new Worker(new URL("./llm-worker.js?v=12", import.meta.url), { type: "module" });
       this.engine = await CreateWebWorkerMLCEngine(worker, modelId, {
         initProgressCallback: (r) => {
           const pct = Math.round((r.progress ?? 0) * 100);

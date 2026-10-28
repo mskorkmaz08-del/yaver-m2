@@ -1,9 +1,9 @@
 // Yaver, the talking assistant: wake word or button → speech to text →
 // studio command or language model → spoken, streamed answer.
-import { Brain } from "./brain.js?v=11";
-import { Listener, Speaker } from "./voice.js?v=11";
-import { parseCommand, navCommand, describeScene } from "./commands.js?v=11";
-import { markOneSettings } from "./markone.js?v=11";
+import { Brain } from "./brain.js?v=12";
+import { Listener, Speaker } from "./voice.js?v=12";
+import { parseCommand, navCommand, describeScene } from "./commands.js?v=12";
+import { markOneSettings } from "./markone.js?v=12";
 
 const HISTORY_KEY = "yaver-chat";
 const HISTORY_TURNS = 12; // messages kept for context (the local model's window is small)
@@ -178,13 +178,23 @@ export function startAssistant(app) {
 
   // ---- Voice status ------------------------------------------------------------
 
-  function showVoice(extra = "") {
-    el.voice.textContent = `Voice: ${speaker.voiceName}${extra}`;
+  function showVoice(pct) {
+    el.voice.textContent = speaker.natural ? `Voice: ${speaker.voiceName}`
+      : speaker.loading ? `Voice: downloading once${pct == null ? "…" : ` ${pct}%`} (text replies until then)`
+      : "Voice: built-in (the natural voice couldn't load)";
   }
-  speaker.addEventListener("progress", (e) => { if (!speaker.natural) showVoice(`, natural voice downloading ${e.detail}%`); });
-  speaker.addEventListener("ready", () => showVoice());
+  speaker.addEventListener("progress", (e) => { if (speaker.loading) showVoice(e.detail); });
   speaker.addEventListener("failed", () => showVoice());
   showVoice();
+  // The first time, the voice downloads after the greeting: say hello once it can.
+  let voiced = false;
+  let greetedAloud = false;
+  speaker.addEventListener("ready", () => {
+    showVoice();
+    if (voiced) return;
+    voiced = true;
+    if (!greetedAloud && !speaker.speaking) speaker.say("Voice systems online, sir.");
+  });
   markOneSettings().then(({ geminiKey, ttsVoice }) => {
     if (geminiKey) speaker.useGemini(geminiKey, ttsVoice || "Charon");
   });
@@ -222,19 +232,9 @@ export function startAssistant(app) {
   addLine("msg-yaver", hello);
   setLook("idle");
   // Chrome only lets a page speak after a click or key press; if the greeting
-  // was refused, say it on the first one.
-  speaker.say(hello).then(() => {
-    if (!speaker.blocked) return;
-    const once = () => {
-      window.removeEventListener("pointerdown", once, true);
-      window.removeEventListener("keydown", once, true);
-      speaker.blocked = false;
-      speaker.unlock();
-      setTimeout(() => speaker.say(hello), 50);
-    };
-    window.addEventListener("pointerdown", once, true);
-    window.addEventListener("keydown", once, true);
-  });
+  // is refused, the speaker says it on the first one.
+  greetedAloud = !speaker.loading;
+  speaker.say(hello);
 
   return { brain, listener, speaker, handle };
 }

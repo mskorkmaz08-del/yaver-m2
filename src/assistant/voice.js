@@ -1,8 +1,8 @@
-import { synth as geminiSynth } from "./gemini.js?v=11";
+import { synth as geminiSynth } from "./gemini.js?v=12";
 
-// Listening and speaking, both built into Chrome, so no keys are needed.
-// Listening uses the browser's speech recognition (Chrome sends the audio to
-// Google to turn it into text); speaking uses the voices on this computer.
+// Listening and speaking, with no keys needed. Listening uses Chrome's speech
+// recognition (Chrome sends the audio to Google to turn it into text);
+// speaking uses a natural neural voice (see Speaker at the bottom).
 
 // Ways speech recognition tends to hear "Yaver".
 const WAKE = /\b(?:hey\s+|ok\s+|okay\s+)?(?:yaver|yavar|yavor|yawer|javer|jabber|java|jarvis|yahweh|ya\s?ver|yeah\s?ver|y\s?aver)\b[\s,.!?]*/i;
@@ -121,8 +121,8 @@ export class Listener extends EventTarget {
 
 // ---- Speaking -------------------------------------------------------------------
 
-// The computer's built-in voices: available instantly but robotic. Used until
-// the natural voice below has loaded, or if it can't run. Picks a British male
+// The computer's built-in voices: available instantly but robotic. Only used
+// if the natural voice below can't run on this computer. Picks a British male
 // voice when there is one (macOS has "Daniel").
 const PREFERRED = ["Daniel", "Arthur", "Google UK English Male", "Oliver", "Malcolm", "George"];
 
@@ -207,7 +207,7 @@ class NeuralSpeaker extends EventTarget {
     this.source = null;
     this.ctx = null;
     this.chain = null;
-    this.worker = new Worker(new URL("./tts-worker.js?v=11", import.meta.url), { type: "module" });
+    this.worker = new Worker(new URL("./tts-worker.js?v=12", import.meta.url), { type: "module" });
     this.worker.onmessage = ({ data }) => {
       if (data.type === "progress") this.dispatchEvent(new CustomEvent("progress", { detail: data.pct }));
       else if (data.type === "ready") { this.kokoroReady = true; this.dispatchEvent(new Event("ready")); }
@@ -235,10 +235,17 @@ class NeuralSpeaker extends EventTarget {
   get speaking() { return this.queue > 0; }
 
   // Browsers only allow sound after the person has clicked or pressed a key.
-  get blocked() { return !this.ctx || this.ctx.state !== "running"; }
   unlock() {
     this.ctx ??= new AudioContext();
     if (this.ctx.state === "suspended") this.ctx.resume().catch(() => {});
+  }
+
+  async canPlay() {
+    this.unlock();
+    if (this.ctx.state !== "running") {
+      await Promise.race([this.ctx.resume().catch(() => {}), new Promise((r) => setTimeout(r, 300))]);
+    }
+    return this.ctx.state === "running";
   }
 
   // Mark One's "JARVIS" touch: trim the boom, lift the presence a little and
@@ -279,9 +286,9 @@ class NeuralSpeaker extends EventTarget {
     return this.kokoro(text);
   }
 
-  // Resolves when spoken. `fallback(text)` speaks a piece that couldn't be
-  // voiced naturally with the built-in voice.
-  say(text, fallback) {
+  // Resolves when spoken. `blocked(text)` gets a piece the browser wouldn't
+  // let us play yet (no click or key press so far).
+  say(text, blocked) {
     text = text.replace(/[*_#`>]+/g, "").trim();
     if (!text) return Promise.resolve();
     this.unlock();
@@ -299,8 +306,9 @@ class NeuralSpeaker extends EventTarget {
     this.playing = this.playing.then(async () => {
       const a = await audio;
       if (epoch !== this.epoch) return done();
-      if (a?.samples?.length && this.ctx.state === "running") await this.play(a.samples, a.rate);
-      else await fallback?.(text);
+      if (!a?.samples?.length) console.warn("Natural voice couldn't voice:", text);
+      else if (await this.canPlay()) await this.play(a.samples, a.rate);
+      else blocked?.(text);
       done();
     });
     return this.playing;
@@ -328,13 +336,15 @@ class NeuralSpeaker extends EventTarget {
   }
 }
 
-// What the assistant talks through: the natural voice once it's ready, the
-// built-in voice until then (and if the natural one can't run).
+// What the assistant talks through: only the natural voice. While it is
+// still downloading (the first time only) Yaver answers in text; the robotic
+// built-in voice is used only if the natural one can't run at all.
 export class Speaker extends EventTarget {
   constructor() {
     super();
     this.system = new SystemSpeaker();
     this.neural = null;
+    this.retry = null; // text the browser blocked; said on the next click or key
     try { this.neural = new NeuralSpeaker(); } catch (err) { console.warn("No natural voice", err); }
     for (const s of [this.system, this.neural].filter(Boolean)) {
       s.addEventListener("start", () => this.dispatchEvent(new Event("start")));
@@ -345,25 +355,37 @@ export class Speaker extends EventTarget {
     this.neural?.addEventListener("failed", () => this.dispatchEvent(new Event("failed")));
   }
 
-  get active() { return this.neural?.ready ? this.neural : this.system; }
+  get loading() { return Boolean(this.neural) && !this.neural.ready && !this.neural.failed; }
+  get natural() { return Boolean(this.neural?.ready); }
   get speaking() { return this.system.speaking || Boolean(this.neural?.speaking); }
-  get natural() { return this.active === this.neural; }
-  get blocked() { return this.active.blocked; }
-  set blocked(v) { this.system.blocked = v; }
 
-  get voiceName() { return this.natural ? this.neural.name : "built-in"; }
+  get voiceName() {
+    if (this.natural) return this.neural.name;
+    return this.loading ? "loading" : "built-in";
+  }
 
-  // Call from a click or key press: lets the natural voice make sound.
-  unlock() { this.neural?.unlock(); }
+  // Call from a click or key press: lets the natural voice make sound, and
+  // says whatever the browser blocked before.
+  unlock() {
+    this.neural?.unlock();
+    if (this.retry) {
+      const text = this.retry;
+      this.retry = null;
+      this.system.blocked = false;
+      setTimeout(() => this.say(text), 50);
+    }
+  }
 
   useGemini(key, voice) { this.neural?.useGemini(key, voice); }
 
   say(text) {
-    if (this.active === this.neural) return this.neural.say(text, (t) => this.system.say(t));
-    return this.system.say(text);
+    if (this.natural) return this.neural.say(text, (t) => { this.retry = this.retry ? `${this.retry} ${t}` : t; });
+    if (this.loading) return Promise.resolve(); // text only until the voice is ready
+    return this.system.say(text).then(() => { if (this.system.blocked) this.retry = text; });
   }
 
   stop() {
+    this.retry = null;
     this.system.stop();
     this.neural?.stop();
   }

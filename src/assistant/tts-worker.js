@@ -4,22 +4,46 @@
 import { KokoroTTS } from "https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js";
 
 const MODEL = "onnx-community/Kokoro-82M-v1.0-ONNX";
+const GPU = { dtype: "fp32", device: "webgpu" }; // fast, ~310 MB once
+const CPU = { dtype: "q8", device: "wasm" };     // slower, ~90 MB once
 let tts = null;
+let device = null;
+let toCpu = null; // switching to the CPU after a GPU failure (once)
 
-async function load() {
-  // The graphics chip is much faster; without it, a smaller model on the CPU.
-  const gpu = "gpu" in navigator && (await navigator.gpu.requestAdapter().catch(() => null));
-  const opts = gpu ? { dtype: "fp32", device: "webgpu" } : { dtype: "q8", device: "wasm" };
+async function loadWith(opts) {
   let lastPct = -1;
   tts = await KokoroTTS.from_pretrained(MODEL, {
     ...opts,
     progress_callback: (p) => {
-      if (p.status !== "progress" || !p.total) return;
-      const pct = Math.round((p.loaded / p.total) * 100);
+      // Only the model file matters; the others are a few KB.
+      if (p.status !== "progress" || !p.total || !/\.onnx$/.test(p.file || "")) return;
+      const pct = Math.floor((p.loaded / p.total) * 100);
       if (pct !== lastPct) postMessage({ type: "progress", pct: (lastPct = pct) });
     },
   });
-  postMessage({ type: "ready", device: opts.device });
+  device = opts.device;
+}
+
+// The graphics chip is much faster; without it (or if it fails), the CPU.
+async function load() {
+  const gpu = "gpu" in navigator && (await navigator.gpu.requestAdapter().catch(() => null));
+  if (gpu) {
+    try { await loadWith(GPU); } catch (err) { console.warn("Kokoro on the GPU failed, using the CPU", err); await loadWith(CPU); }
+  } else {
+    await loadWith(CPU);
+  }
+  postMessage({ type: "ready", device });
+}
+
+async function speak(data) {
+  try {
+    return await tts.generate(data.text, { voice: data.voice, speed: data.speed });
+  } catch (err) {
+    if (device !== "webgpu" && !toCpu) throw err;
+    if (!toCpu) { console.warn("Kokoro on the GPU failed, using the CPU", err); toCpu = loadWith(CPU); }
+    await toCpu;
+    return tts.generate(data.text, { voice: data.voice, speed: data.speed });
+  }
 }
 
 self.onmessage = async ({ data }) => {
@@ -27,7 +51,7 @@ self.onmessage = async ({ data }) => {
     try { await load(); } catch (err) { postMessage({ type: "error", message: String(err?.message || err) }); }
   } else if (data.type === "speak") {
     try {
-      const audio = await tts.generate(data.text, { voice: data.voice, speed: data.speed });
+      const audio = await speak(data);
       postMessage({ type: "audio", id: data.id, samples: audio.audio, rate: audio.sampling_rate }, [audio.audio.buffer]);
     } catch (err) {
       postMessage({ type: "audio", id: data.id, error: String(err?.message || err) });
