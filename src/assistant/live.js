@@ -2,7 +2,7 @@
 // streams straight to Gemini, and Gemini streams its spoken answer straight
 // back, so Yaver answers in well under a second, in a natural voice, and can
 // be interrupted just by talking. Needs a free Gemini key (see keys.js).
-import { jarvisOutput } from "./voice.js?v=14";
+import { jarvisOutput } from "./voice.js?v=15";
 
 const API = "https://generativelanguage.googleapis.com/v1beta";
 const WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
@@ -71,6 +71,100 @@ function fromBase64Pcm(b64) {
   return out;
 }
 
+// Google's voice sometimes adds a short burst of static after it stops
+// talking (Mark One trims the same thing). This holds back the newest audio
+// just long enough to recognise such a burst: a short, noisy sound (it crosses
+// zero far more often than a voice) after a pause, with silence after it.
+// Everything else passes straight through.
+const WIN = 480;              // 20 ms at 24 kHz
+const LOUD = 500 / 32768;     // quieter than this is silence
+const GAP_WINDOWS = 6;        // a burst comes after at least 120 ms of silence…
+const BURST_MAX = 15;         // …lasts at most 300 ms…
+const AFTER_WINDOWS = 3;      // …and is followed by 60 ms of silence
+const NOISY_ZCR = 0.28;
+
+export class StaticTrimmer {
+  constructor(release) {
+    this.release = release; // gets cleaned Float32Array pieces, in order
+    this.ready = [];        // windows released by the current drain
+    this.reset();
+  }
+
+  reset() {
+    this.ready = [];
+    this.windows = [];  // [{ samples, loud, zcr }] not yet released
+    this.rest = new Float32Array(0);
+    this.silence = 0;   // quiet windows just released
+    this.spoke = false; // whether this turn has had any speech yet
+    this.muted = false; // whether the last window was static
+  }
+
+  push(samples) {
+    const all = new Float32Array(this.rest.length + samples.length);
+    all.set(this.rest);
+    all.set(samples, this.rest.length);
+    let i = 0;
+    for (; i + WIN <= all.length; i += WIN) {
+      const w = all.subarray(i, i + WIN);
+      let e = 0, z = 0;
+      for (let j = 0; j < WIN; j++) { e += w[j] * w[j]; if (j && (w[j] >= 0) !== (w[j - 1] >= 0)) z++; }
+      this.windows.push({ samples: w.slice(), loud: Math.sqrt(e / WIN) > LOUD, zcr: z / WIN });
+    }
+    this.rest = all.slice(i);
+    this.drain(false);
+    this.emit();
+  }
+
+  // Hands over what was released in one piece (fewer, longer sounds).
+  emit() {
+    if (!this.ready.length) return;
+    const n = this.ready.reduce((a, w) => a + w.length, 0);
+    const out = new Float32Array(n);
+    let o = 0;
+    for (const w of this.ready) { out.set(w, o); o += w.length; }
+    this.ready = [];
+    this.release(out);
+  }
+
+  // End of Yaver's turn: decide on whatever is left, and release it.
+  flush() {
+    this.drain(true);
+    if (this.rest.length) this.ready.push(this.muted ? new Float32Array(this.rest.length) : this.rest);
+    this.emit();
+    this.reset();
+  }
+
+  drain(final) {
+    while (this.windows.length) {
+      const w = this.windows[0];
+      if (!w.loud) { this.out(this.windows.shift(), false); this.silence++; continue; }
+      // Speech straight on, or the first sound of the turn: no burst possible.
+      if (this.silence < GAP_WINDOWS || !this.spoke) { this.out(this.windows.shift(), false); this.silence = 0; this.spoke = true; continue; }
+      // A sound after a pause: wait until we know how long it lasts.
+      let k = 0;
+      while (k < this.windows.length && this.windows[k].loud) k++;
+      if (k > BURST_MAX) { this.releaseSegment(k, false); continue; } // long: speech
+      let after = 0;
+      while (k + after < this.windows.length && !this.windows[k + after].loud && after < AFTER_WINDOWS) after++;
+      if (after < AFTER_WINDOWS && !final) return; // not sure yet
+      const zcr = this.windows.slice(0, k).reduce((a, b) => a + b.zcr, 0) / k;
+      this.releaseSegment(k, zcr > NOISY_ZCR);
+    }
+  }
+
+  releaseSegment(k, mute) {
+    for (let n = 0; n < k; n++) this.out(this.windows.shift(), mute);
+    this.silence = 0;
+    if (!mute) this.spoke = true;
+  }
+
+  out(w, mute) {
+    this.muted = mute;
+    if (mute) w.samples.fill(0);
+    this.ready.push(w.samples);
+  }
+}
+
 // Events: "open", "close" (detail: reason), "speaking" / "quiet", "heard"
 // (his words), "said" (Yaver's words), "turn" (Yaver finished a turn).
 // options: { key, voice, system, tools: { declarations, run(name, args) } }
@@ -85,6 +179,8 @@ export class LiveSession extends EventTarget {
     this.pendingText = [];
     this.sources = new Set();
     this.playhead = 0;
+    this.run = null;   // the gain of the current unbroken stretch of voice
+    this.trimmer = new StaticTrimmer((samples) => this.schedule(samples));
     this.lastActivity = performance.now();
     this.resumeHandle = null;
   }
@@ -227,25 +323,43 @@ export class LiveSession extends EventTarget {
     if (!content) return;
     if (content.interrupted) this.stopPlayback(); // he started talking
     for (const part of content.modelTurn?.parts || []) {
-      if (part.inlineData?.data && /audio/.test(part.inlineData.mimeType || "audio")) this.play(fromBase64Pcm(part.inlineData.data));
+      if (part.inlineData?.data && /audio/.test(part.inlineData.mimeType || "audio")) this.trimmer.push(fromBase64Pcm(part.inlineData.data));
     }
+    if (content.generationComplete || content.turnComplete) this.trimmer.flush();
     if (content.inputTranscription?.text) this.emit("heard", content.inputTranscription.text);
     if (content.outputTranscription?.text) this.emit("said", content.outputTranscription.text);
     if (content.turnComplete) this.emit("turn");
   }
 
-  // Queues a chunk of Yaver's voice right after the previous one.
-  play(samples) {
+  // Queues a piece of Yaver's voice right after the previous one. Each
+  // unbroken stretch fades in and out over a few milliseconds, so starts,
+  // stops and gaps never click; the first piece waits a moment so that a
+  // slightly late next piece doesn't leave a gap.
+  schedule(samples) {
     if (!samples.length || this.closed) return;
     const ctx = this.out;
     const buf = ctx.createBuffer(1, samples.length, OUT_RATE);
     buf.copyToChannel(samples, 0);
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.connect(jarvisOutput(ctx));
-    this.playhead = Math.max(this.playhead, ctx.currentTime + 0.03);
+    if (!this.run || this.playhead < ctx.currentTime + 0.01) {
+      // A new stretch (nothing playing, or the previous one ran out).
+      this.playhead = ctx.currentTime + 0.12;
+      this.run = ctx.createGain();
+      this.run.gain.setValueAtTime(0, this.playhead);
+      this.run.gain.linearRampToValueAtTime(1, this.playhead + 0.005);
+      this.run.connect(jarvisOutput(ctx));
+      this.fadeAt = 0;
+    }
+    src.connect(this.run);
     src.start(this.playhead);
     this.playhead += buf.duration;
+    // Fade out at the new end of the stretch (moved along as pieces arrive).
+    const g = this.run.gain;
+    if (this.fadeAt) g.cancelScheduledValues(this.fadeAt);
+    this.fadeAt = Math.max(ctx.currentTime, this.playhead - 0.008);
+    g.setValueAtTime(1, this.fadeAt);
+    g.linearRampToValueAtTime(0, this.playhead);
     if (!this.sources.size) this.emit("speaking");
     this.sources.add(src);
     src.onended = () => {
@@ -255,9 +369,18 @@ export class LiveSession extends EventTarget {
     };
   }
 
+  // Interrupted: fade out quickly instead of cutting off mid-word.
   stopPlayback() {
-    for (const src of this.sources) { try { src.stop(); } catch {} }
+    this.trimmer.reset();
+    if (this.run && this.out) {
+      const now = this.out.currentTime;
+      this.run.gain.cancelScheduledValues(now);
+      this.run.gain.setValueAtTime(this.run.gain.value, now);
+      this.run.gain.linearRampToValueAtTime(0, now + 0.03);
+      for (const src of this.sources) { try { src.stop(now + 0.035); } catch {} }
+    }
     this.sources.clear();
+    this.run = null;
     this.playhead = 0;
     this.emit("quiet");
   }
