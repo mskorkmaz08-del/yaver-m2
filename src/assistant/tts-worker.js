@@ -32,10 +32,19 @@ async function load() {
   } else {
     await loadWith(CPU);
   }
+  // A first, unheard sentence gets the model warmed up, so the first real
+  // answer starts quickly.
+  await tts.generate("Ready.", { voice: "bm_george" }).catch(() => {});
   postMessage({ type: "ready", device });
 }
 
+// One sentence at a time, in order.
+let queue = Promise.resolve();
+let cancelBefore = 0; // jobs below this id were interrupted: skip them
+
 async function speak(data) {
+  if (data.id < cancelBefore) throw new Error("cancelled");
+  postMessage({ type: "begin", id: data.id });
   try {
     return await tts.generate(data.text, { voice: data.voice, speed: data.speed });
   } catch (err) {
@@ -49,9 +58,13 @@ async function speak(data) {
 self.onmessage = async ({ data }) => {
   if (data.type === "load") {
     try { await load(); } catch (err) { postMessage({ type: "error", message: String(err?.message || err) }); }
+  } else if (data.type === "cancel") {
+    cancelBefore = data.before;
   } else if (data.type === "speak") {
+    const job = queue.then(() => speak(data));
+    queue = job.catch(() => {});
     try {
-      const audio = await speak(data);
+      const audio = await job;
       postMessage({ type: "audio", id: data.id, samples: audio.audio, rate: audio.sampling_rate }, [audio.audio.buffer]);
     } catch (err) {
       postMessage({ type: "audio", id: data.id, error: String(err?.message || err) });

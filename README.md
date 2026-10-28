@@ -12,17 +12,18 @@ The app opens on **Yaver's home screen**, a big orb you talk to. To use the **3D
 
 ## Talking to Yaver
 
-Say **"Yaver"** and then your request, click the orb, or hold **Space** and talk. You can also type. Yaver answers out loud.
+Say **"Yaver"** and then your request, click the orb, or hold **Space** and talk. You can also type. Yaver answers out loud, as soon as you stop talking, and then keeps listening for about 8 seconds so you can reply without saying "Yaver" again. A new request interrupts whatever Yaver was saying. The transcript is hidden; "Show text" brings it back.
 
 - **Studio commands** run instantly, and from the home screen they open the Studio first. Examples: "add two red cubes", "delete it", "make it bigger", "paint it green", "zoom in", "clear the scene", "show the gestures".
 - **Brain**, with nothing to type in:
   - If Yaver Mark One (the first app, on the same site) already has a free Google Gemini key in this browser, Mark II reuses it automatically: Gemini answers, fast. Mark One's data is only read, never changed.
-  - Otherwise a small model runs on the computer itself (Qwen 3.5 2B via WebLLM). It downloads once, about 1.5 GB, and then works offline. Until then, Pollinations' free keyless API answers, about once every 30 seconds.
+  - Otherwise, click **Connect cloud brain** once: a free Puter account (puter.js) gives fast cloud models (GPT-5.4 nano). It is remembered after that.
+  - Without either, a small model runs on the computer itself (Qwen 3.5 2B via WebLLM). It downloads once, about 1.5 GB, and then works offline. Pollinations' heavily rate-limited free API is the last resort.
   - Add `?brain=smart` to the address to use the 4B local model.
 - **Voice**, the same tone as Mark One:
   - With Mark One's key, Google's "Charon" voice.
   - Otherwise Kokoro "George", a natural British voice that runs on the computer and downloads once.
-  - Either way, Mark One's subtle JARVIS effect is applied. Until one of these is ready, the computer's built-in voice is used.
+  - Either way, Mark One's subtle JARVIS effect is applied. Until the voice has downloaded (the first time only), Yaver answers in text; the robotic built-in voice is only used if the natural voice can't run at all.
 - **Listening** uses Chrome's built-in speech recognition.
 
 ## Code
@@ -41,7 +42,7 @@ Say **"Yaver"** and then your request, click the orb, or hold **Space** and talk
   - `assistant.js`: transcript, orb and wiring.
   - `voice.js`: listening and speaking.
   - `commands.js`: studio voice commands.
-  - `brain.js`: Gemini, the local model or the cloud fallback.
+  - `brain.js`: Gemini, Puter, the local model or the last-resort fallback.
   - `gemini.js`: Gemini chat and voice.
   - `markone.js`: reads Mark One's key from this browser.
   - `tts-worker.js`: the Kokoro voice.

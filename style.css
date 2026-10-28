@@ -298,6 +298,16 @@ button.active { background: rgba(76, 201, 255, 0.25); border-color: var(--accent
 .yaver-meta { text-align: right; font-size: 11px; color: var(--muted); line-height: 1.35; }
 .yaver-brain[data-state="local"] { color: #06d6a0; }
 .yaver-hint:empty { display: none; }
+.yaver[data-text="off"] .yaver-log { display: none; }
+.yaver-links { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+body[data-view="home"] .yaver-links { justify-content: center; }
+.yaver-link {
+  background: none; border: 0; padding: 0; font: inherit; font-size: 11px;
+  color: var(--muted); text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.yaver-link:hover { color: #fff; }
+#yaver-connect { color: #4cc9ff; }
+.yaver-link[hidden] { display: none; }
 
 /* The orb: calm when idle, pulsing while listening, spinning while
    thinking, rippling while speaking. */
