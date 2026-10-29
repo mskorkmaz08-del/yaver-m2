@@ -1,7 +1,7 @@
 // Yaver's free Google Gemini key. Pasted once into this browser and kept here
 // for good (it survives app updates); never sent anywhere except Google. If
 // none was pasted, Mark One's key from the same site is used (markone.js).
-import { markOneSettings } from "./markone.js?v=15";
+import { markOneSettings } from "./markone.js?v=16";
 
 const STORE = "yaver-gemini-key";
 

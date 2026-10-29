@@ -2,7 +2,7 @@
 // streams straight to Gemini, and Gemini streams its spoken answer straight
 // back, so Yaver answers in well under a second, in a natural voice, and can
 // be interrupted just by talking. Needs a free Gemini key (see keys.js).
-import { jarvisOutput } from "./voice.js?v=15";
+import { jarvisOutput } from "./voice.js?v=16";
 
 const API = "https://generativelanguage.googleapis.com/v1beta";
 const WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
@@ -79,13 +79,18 @@ function fromBase64Pcm(b64) {
 const WIN = 480;              // 20 ms at 24 kHz
 const LOUD = 500 / 32768;     // quieter than this is silence
 const GAP_WINDOWS = 6;        // a burst comes after at least 120 ms of silence…
-const BURST_MAX = 15;         // …lasts at most 300 ms…
+const BURST_MAX = 12;         // …lasts at most 240 ms…
 const AFTER_WINDOWS = 3;      // …and is followed by 60 ms of silence
-const NOISY_ZCR = 0.28;
+const NOISY_ZCR = 0.35;
+const MIN_AHEAD_S = 0.15;     // never hold audio back when less than this is queued to play
 
 export class StaticTrimmer {
-  constructor(release) {
+  // `ahead()`: seconds of voice already queued to play. Holding audio back
+  // must never make the voice run dry (that's a stutter), so when little is
+  // queued, doubtful sounds are let through.
+  constructor(release, ahead = () => Infinity) {
     this.release = release; // gets cleaned Float32Array pieces, in order
+    this.ahead = ahead;
     this.ready = [];        // windows released by the current drain
     this.reset();
   }
@@ -146,7 +151,11 @@ export class StaticTrimmer {
       if (k > BURST_MAX) { this.releaseSegment(k, false); continue; } // long: speech
       let after = 0;
       while (k + after < this.windows.length && !this.windows[k + after].loud && after < AFTER_WINDOWS) after++;
-      if (after < AFTER_WINDOWS && !final) return; // not sure yet
+      if (after < AFTER_WINDOWS && !final) {
+        if (this.ahead() > MIN_AHEAD_S) return; // not sure yet: wait for more
+        this.releaseSegment(k, false);
+        continue;
+      }
       const zcr = this.windows.slice(0, k).reduce((a, b) => a + b.zcr, 0) / k;
       this.releaseSegment(k, zcr > NOISY_ZCR);
     }
@@ -180,7 +189,11 @@ export class LiveSession extends EventTarget {
     this.sources = new Set();
     this.playhead = 0;
     this.run = null;   // the gain of the current unbroken stretch of voice
-    this.trimmer = new StaticTrimmer((samples) => this.schedule(samples));
+    this.trimmer = new StaticTrimmer(
+      (samples) => this.schedule(samples),
+      () => (this.out && this.sources.size ? this.playhead - this.out.currentTime : 0),
+    );
+    this.turnStarted = false; // whether this turn's voice has started playing
     this.lastActivity = performance.now();
     this.resumeHandle = null;
   }
@@ -326,6 +339,7 @@ export class LiveSession extends EventTarget {
       if (part.inlineData?.data && /audio/.test(part.inlineData.mimeType || "audio")) this.trimmer.push(fromBase64Pcm(part.inlineData.data));
     }
     if (content.generationComplete || content.turnComplete) this.trimmer.flush();
+    if (content.turnComplete) this.turnStarted = false;
     if (content.inputTranscription?.text) this.emit("heard", content.inputTranscription.text);
     if (content.outputTranscription?.text) this.emit("said", content.outputTranscription.text);
     if (content.turnComplete) this.emit("turn");
@@ -343,8 +357,11 @@ export class LiveSession extends EventTarget {
     const src = ctx.createBufferSource();
     src.buffer = buf;
     if (!this.run || this.playhead < ctx.currentTime + 0.01) {
-      // A new stretch (nothing playing, or the previous one ran out).
-      this.playhead = ctx.currentTime + 0.12;
+      // A new stretch. At the start of a turn, wait a moment so a slightly
+      // late next piece doesn't leave a gap; if the voice ran dry mid-turn,
+      // carry on at once.
+      this.playhead = ctx.currentTime + (this.turnStarted ? 0.02 : 0.15);
+      this.turnStarted = true;
       this.run = ctx.createGain();
       this.run.gain.setValueAtTime(0, this.playhead);
       this.run.gain.linearRampToValueAtTime(1, this.playhead + 0.005);
@@ -382,6 +399,7 @@ export class LiveSession extends EventTarget {
     this.sources.clear();
     this.run = null;
     this.playhead = 0;
+    this.turnStarted = false;
     this.emit("quiet");
   }
 
