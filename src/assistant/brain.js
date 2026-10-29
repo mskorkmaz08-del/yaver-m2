@@ -8,8 +8,8 @@
 //    graphics chip through WebLLM. It downloads once (about 1.5 GB), then
 //    works offline. Only loaded when there is no cloud brain.
 //  - Pollinations' free text API, a last resort (heavily rate limited).
-import { geminiSettings } from "./keys.js?v=16";
-import { pickChatModel, streamChat } from "./gemini.js?v=16";
+import { geminiSettings } from "./keys.js?v=17";
+import { pickChatModel, streamChat } from "./gemini.js?v=17";
 
 const GEMINI_PAUSE_MS = 10 * 60000;
 const WEBLLM_URL = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.85/lib/index.js";
@@ -116,7 +116,7 @@ export class Brain extends EventTarget {
       // when space runs low.
       navigator.storage?.persist?.().catch(() => {});
       const { CreateWebWorkerMLCEngine } = await import(WEBLLM_URL);
-      const worker = new Worker(new URL("./llm-worker.js?v=16", import.meta.url), { type: "module" });
+      const worker = new Worker(new URL("./llm-worker.js?v=17", import.meta.url), { type: "module" });
       this.engine = await CreateWebWorkerMLCEngine(worker, modelId, {
         initProgressCallback: (r) => {
           const pct = Math.round((r.progress ?? 0) * 100);

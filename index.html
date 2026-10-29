@@ -4,7 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Yaver Mark II</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=17" />
+  <link rel="stylesheet" href="academy.css?v=17" />
   <!-- Installable as its own app (separate from the main Yaver app). -->
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#07090f" />
@@ -15,6 +16,7 @@
     {
       "imports": {
         "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
         "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs"
       }
     }
@@ -31,6 +33,14 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 20.5 7v10L12 21.5 3.5 17V7z M3.5 7 12 11.5 20.5 7 M12 11.5v10" /></svg>
     <span>3D Studio</span>
   </button>
+
+  <button class="hud open-academy home-only" id="open-academy" title="Robotics course and robot simulator (or say &quot;open the course&quot;)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="7" width="12" height="10" rx="2" /><path d="M9 7V4M15 7V4M6 11H3M6 14H3M18 11h3M18 14h3M9 17v3M15 17v3" /><circle cx="10" cy="12" r="1.2" /><circle cx="14" cy="12" r="1.2" /></svg>
+    <span>Robotics Academy</span>
+  </button>
+
+  <!-- The Robotics Academy: lessons and the robot simulator (built by src/academy/academy.js). -->
+  <div id="academy" class="academy-only"></div>
 
   <!-- The 3D Studio: shown when opened. -->
   <div id="stage" class="studio-only"></div>
@@ -116,6 +126,6 @@
       if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () {});
     })();
   </script>
-  <script type="module" src="src/app.js?v=16"></script>
+  <script type="module" src="src/app.js?v=17"></script>
 </body>
 </html>

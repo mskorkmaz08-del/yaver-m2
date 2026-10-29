@@ -52,8 +52,11 @@ const plural = (n, shape) => (n === 1 ? `a ${shape}` : `${n} ${shape === "torus"
 // Opening and leaving the 3D studio.
 export function navCommand(raw) {
   const text = raw.toLowerCase();
+  // The Robotics Academy first, so "the robotics lab" isn't taken for the studio.
+  if (/\b(open|start|launch|show|go to|take me to|switch to|run|begin)\b.*\b(simulator|robot builder)\b|\blet'?s build (a|my|the|our) robot\b/.test(text)) return "sim";
+  if (/\b(open|start|launch|enter|show|go to|take me to|switch to|begin|continue)\b.*\b(academy|course|lessons?|robotics|tutorials?|arduino|esp32|electronics)\b|\bteach me\b/.test(text)) return "academy";
   if (/\b(open|start|launch|enter|show|go to|take me to|switch to)\b.*\b(studio|editor|3d|workshop|lab)\b|\blet'?s (build|create|make something)\b/.test(text)) return "studio";
-  if (/\b(close|exit|leave|quit)\b.*\b(studio|editor|3d)\b|\b(go|come) (back|home)\b|\bhome screen\b/.test(text)) return "home";
+  if (/\b(close|exit|leave|quit)\b.*\b(studio|editor|3d|academy|course|simulator)\b|\b(go|come) (back|home)\b|\bhome screen\b/.test(text)) return "home";
   return null;
 }
 

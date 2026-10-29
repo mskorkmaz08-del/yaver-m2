@@ -1,11 +1,11 @@
 // Yaver, the talking assistant. With a Gemini key: a real-time voice
 // conversation through Gemini Live (live.js). Without one: wake word or button
 // → speech to text → studio command or language model → spoken answer.
-import { Brain } from "./brain.js?v=16";
-import { Listener, Speaker } from "./voice.js?v=16";
-import { parseCommand, navCommand, describeScene } from "./commands.js?v=16";
-import { geminiSettings, saveKey, forgetKey } from "./keys.js?v=16";
-import { LiveSession } from "./live.js?v=16";
+import { Brain } from "./brain.js?v=17";
+import { Listener, Speaker } from "./voice.js?v=17";
+import { parseCommand, navCommand, describeScene } from "./commands.js?v=17";
+import { geminiSettings, saveKey, forgetKey } from "./keys.js?v=17";
+import { LiveSession } from "./live.js?v=17";
 
 const HISTORY_KEY = "yaver-chat";
 const HISTORY_TURNS = 12; // messages kept for context (the local model's window is small)
@@ -13,7 +13,7 @@ const HISTORY_TURNS = 12; // messages kept for context (the local model's window
 const LIVE_IDLE_S = 20; // a live conversation ends after this much silence
 const LIVE_PAUSE_MS = 10 * 60000; // after a Live failure, the other way for a while
 
-const PERSONA = `You are Yaver, Mustafa's personal AI assistant. Speak like JARVIS: calm, precise and understated, with British English and a touch of dry wit; now and then address him as "sir", not every time. No American filler. This is a voice conversation: you are heard, not read, so answer in one to three short spoken sentences, with no lists, markdown, emoji or code unless he asks for detail. You live in Yaver Mark II. Its home screen is you; from there he can open the 3D Studio (say "open the studio"), where he builds things with hand gestures through the webcam. The app itself handles studio commands like "add a red cube", "delete it", "make it bigger", "paint it green", "zoom in" and "clear the scene", so if he asks how to do something there, tell him the command or gesture. You can't browse the internet yet, so for live news, weather or prices say you can't check that yet. Never make up facts; say when you're unsure.`;
+const PERSONA = `You are Yaver, Mustafa's personal AI assistant. Speak like JARVIS: calm, precise and understated, with British English and a touch of dry wit; now and then address him as "sir", not every time. No American filler. This is a voice conversation: you are heard, not read, so answer in one to three short spoken sentences, with no lists, markdown, emoji or code unless he asks for detail. You live in Yaver Mark II. Its home screen is you; from there he can open the 3D Studio (say "open the studio"), where he builds things with hand gestures through the webcam, and the Robotics Academy (say "open the course"): 3D lessons on electronics, Arduino and the ESP32, and a simulator where he builds, wires and programs a robot. In the Academy he can say "next", "back", "lesson 5" or "open the simulator". The app itself handles studio commands like "add a red cube", "delete it", "make it bigger", "paint it green", "zoom in" and "clear the scene", so if he asks how to do something there, tell him the command or gesture. You can't browse the internet yet, so for live news, weather or prices say you can't check that yet. Never make up facts; say when you're unsure.`;
 
 // The same, for Gemini Live: it can search the web and run studio commands.
 const LIVE_PERSONA = PERSONA
@@ -24,7 +24,7 @@ const LIVE_PERSONA = PERSONA
 const LIVE_TOOLS = [
   {
     name: "studio",
-    description: "Runs a command in Yaver's 3D Studio and says what happened. One short English command per call, such as: open the studio, go home, add two red cubes, add a gold torus, delete it, clear the scene, make it bigger, make it smaller, paint it green, turn it, zoom in, zoom out, show the gestures.",
+    description: "Runs a command in Yaver's 3D Studio or Robotics Academy and says what happened. One short English command per call, such as: open the studio, open the course, open the simulator, next, back, lesson 3, go home, add two red cubes, add a gold torus, delete it, clear the scene, make it bigger, make it smaller, paint it green, turn it, zoom in, zoom out, show the gestures.",
     parameters: { type: "OBJECT", properties: { command: { type: "STRING", description: "The command, in plain English." } }, required: ["command"] },
   },
   { name: "describe_scene", description: "Says what is in the 3D Studio right now." },
@@ -43,8 +43,9 @@ function greeting() {
   return `${part}, sir. Yaver online.`;
 }
 
-// `app` is { view() → "home" | "studio", openStudio() → Promise<studio API>,
-// goHome(), studio() → studio API or null if never opened } from app.js.
+// `app` is { view() → "home" | "studio" | "academy", openStudio() → Promise<studio API>,
+// goHome(), studio() → studio API or null if never opened, openAcademy(sub),
+// academy() → the open Academy module or null } from app.js.
 export function startAssistant(app) {
   const el = {
     root: document.getElementById("yaver"),
@@ -185,9 +186,14 @@ export function startAssistant(app) {
   // need the model. A studio command from the home screen opens the studio
   // first. Returns what was done, or null if it isn't a studio command.
   async function studioCommand(request) {
+    // In the Academy, "next", "back", "lesson 3"… come first.
+    const academyReply = app.academy()?.command(request);
+    if (academyReply) return academyReply;
     const nav = navCommand(request);
     const action = nav ? null : parseCommand(request);
     if (nav === "studio") { const was = app.view(); app.openStudio(); return was === "studio" ? "We're already in the studio, sir." : "Opening the studio."; }
+    if (nav === "academy") { app.openAcademy(); return "Opening the Robotics Academy."; }
+    if (nav === "sim") { app.openAcademy("sim"); return "Opening the robot simulator."; }
     if (nav === "home") { app.goHome(); return "Back to the home screen."; }
     if (action) return action(app.view() === "studio" ? app.studio() : await app.openStudio());
     return null;
@@ -220,7 +226,7 @@ export function startAssistant(app) {
     const voice = sentenceSpeaker();
     let reply = "";
     const messages = [
-      { role: "system", content: `${PERSONA}\nIt is now ${new Date().toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}. ${describeScene(app.view() === "studio" ? app.studio()?.editor : null)}` },
+      { role: "system", content: `${PERSONA}\nIt is now ${new Date().toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}. ${app.academy()?.describe() ?? describeScene(app.view() === "studio" ? app.studio()?.editor : null)}` },
       ...history.slice(-HISTORY_TURNS),
       { role: "user", content: request },
     ];
@@ -265,7 +271,7 @@ export function startAssistant(app) {
   function liveSystem() {
     const now = new Date().toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
     const recent = history.slice(-8).map((m) => `${m.role === "user" ? "Mustafa" : "Yaver"}: ${m.content}`).join("\n");
-    return `${LIVE_PERSONA}\nIt is now ${now}. ${describeScene(app.view() === "studio" ? app.studio()?.editor : null)}${recent ? `\nYour last exchange:\n${recent}` : ""}`;
+    return `${LIVE_PERSONA}\nIt is now ${now}. ${app.academy()?.describe() ?? describeScene(app.view() === "studio" ? app.studio()?.editor : null)}${recent ? `\nYour last exchange:\n${recent}` : ""}`;
   }
 
   // Grows the transcript line for whoever is talking.
@@ -445,7 +451,7 @@ export function startAssistant(app) {
 
   // Hold Space to talk (when not typing).
   window.addEventListener("keydown", (e) => {
-    if (e.code !== "Space" || e.repeat || e.target === el.input || e.target === el.keyInput) return;
+    if (e.code !== "Space" || e.repeat || e.target === el.input || e.target === el.keyInput || e.target.closest?.("input, textarea")) return;
     e.preventDefault();
     if (live) return;
     if (liveOn()) talkLive();

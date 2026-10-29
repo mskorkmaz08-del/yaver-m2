@@ -1,13 +1,13 @@
 // The 3D Studio: loaded the first time you open it from Yaver's home screen.
 // The ?v= number defeats browser caching after an update (GitHub Pages lets
 // browsers keep files for 10 minutes). Bump it everywhere together.
-import { Editor, SHAPES, COLORS } from "./editor.js?v=16";
-import { HandTracker } from "./hands.js?v=16";
-import { classify } from "./gestures.js?v=16";
-import { Hands3D } from "./hand3d.js?v=16";
-import { Shelf } from "./shelf.js?v=16";
-import { gestureIcon } from "./helpicons.js?v=16";
-import { OneEuro } from "./filters.js?v=16";
+import { Editor, SHAPES, COLORS } from "./editor.js?v=17";
+import { sharedTracker } from "./hands.js?v=17";
+import { classify } from "./gestures.js?v=17";
+import { Hands3D } from "./hand3d.js?v=17";
+import { Shelf } from "./shelf.js?v=17";
+import { gestureIcon } from "./helpicons.js?v=17";
+import { OneEuro } from "./filters.js?v=17";
 
 const STUDIO_VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 document.getElementById("version").textContent = `v${STUDIO_VERSION}`;
@@ -30,7 +30,7 @@ const overlay = document.getElementById("hands-overlay");
 const ctx = overlay.getContext("2d");
 const video = document.getElementById("camera");
 const statusEl = document.getElementById("status");
-const tracker = new HandTracker(video);
+const tracker = sharedTracker(video);
 const hands3d = new Hands3D(editor.scene);
 
 window.yaver = { ...window.yaver, editor }; // handy from the console

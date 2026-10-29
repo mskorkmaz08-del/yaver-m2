@@ -1,4 +1,4 @@
-import { synth as geminiSynth } from "./gemini.js?v=16";
+import { synth as geminiSynth } from "./gemini.js?v=17";
 
 // Listening and speaking, with no keys needed. Listening uses Chrome's speech
 // recognition (Chrome sends the audio to Google to turn it into text);
@@ -254,7 +254,7 @@ class NeuralSpeaker extends EventTarget {
   // voice is available.
   loadKokoro() {
     if (this.worker) return;
-    this.worker = new Worker(new URL("./tts-worker.js?v=16", import.meta.url), { type: "module" });
+    this.worker = new Worker(new URL("./tts-worker.js?v=17", import.meta.url), { type: "module" });
     this.worker.onmessage = ({ data }) => {
       if (data.type === "progress") this.dispatchEvent(new CustomEvent("progress", { detail: data.pct }));
       else if (data.type === "ready") { this.kokoroReady = true; this.dispatchEvent(new Event("ready")); }
