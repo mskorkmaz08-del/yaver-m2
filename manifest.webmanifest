@@ -2,7 +2,7 @@
   "id": "./",
   "name": "Yaver Mark II",
   "short_name": "Yaver II",
-  "description": "Yaver Mark II: build 3D objects with your hands through the webcam (voice coming next).",
+  "description": "Yaver Mark II: a voice assistant, a hand-gesture 3D studio, and a robotics course with a robot simulator.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

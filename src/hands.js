@@ -68,3 +68,11 @@ export class HandTracker {
     });
   }
 }
+
+// One tracker (and one copy of the hand model) for the whole app: the Studio
+// and the Academy take turns with the camera.
+let shared = null;
+export function sharedTracker(video) {
+  shared ??= new HandTracker(video);
+  return shared;
+}
