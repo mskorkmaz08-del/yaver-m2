@@ -1,9 +1,9 @@
 // Module 3: ESP32 and robotics. The ESP32 board, driving motors with an
 // H-bridge, and measuring distance with ultrasound.
 import * as THREE from "three";
-import { tween, ease } from "./anim.js?v=17";
-import { esp32, l298n, ttMotor, wheel, battery2x18650, hcsr04, jumperWire, wirePath, roundedPath, pinWorld, WIRE_COLORS, ESP32_NOTES, L298N_NOTES } from "./parts.js?v=17";
-import { byInfo } from "./lessons-arduino.js?v=17";
+import { tween, ease } from "./anim.js?v=18";
+import { esp32, l298n, ttMotor, wheel, battery2x18650, hcsr04, jumperWire, wirePath, roundedPath, pinWorld, WIRE_COLORS, ESP32_NOTES, L298N_NOTES } from "./parts.js?v=18";
+import { byInfo } from "./lessons-arduino.js?v=18";
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 

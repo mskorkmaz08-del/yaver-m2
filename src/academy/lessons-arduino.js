@@ -1,8 +1,8 @@
 // Module 2: Arduino. The Uno board, a first sketch (Blink), reading a button,
 // and PWM brightness with analogWrite.
 import * as THREE from "three";
-import { tween, ease } from "./anim.js?v=17";
-import { arduinoUno, breadboard, resistor, led, pushButton, jumperWire, pinWorld, WIRE_COLORS, UNO_NOTES } from "./parts.js?v=17";
+import { tween, ease } from "./anim.js?v=18";
+import { arduinoUno, breadboard, resistor, led, pushButton, jumperWire, pinWorld, WIRE_COLORS, UNO_NOTES } from "./parts.js?v=18";
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 

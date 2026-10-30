@@ -3,14 +3,15 @@
 // sliders, scroll panels, grab things in the 3D scene, orbit and zoom the
 // view, and swipe between steps. The same gestures as the Studio: pinch to
 // press or grab, open the hand to let go, both hands to zoom.
-import { sharedTracker } from "./hands.js?v=17";
-import { classify } from "./gestures.js?v=17";
-import { OneEuro } from "./filters.js?v=17";
+import { sharedTracker } from "./hands.js?v=18";
+import { classify } from "./gestures.js?v=18";
+import { OneEuro, Glide } from "./filters.js?v=18";
 
 const SMOOTHING = 0.35;
 const RELEASE_GRACE_MS = 140;
 const LOST_HAND_MS = 300;
 const POINTER_FILTER = [1.0, 0.007];
+const GLIDE_MS = 55; // pointers glide between camera reports (see filters.js)
 const CLICK_SLOP = 26; // px a pinch may wander and still count as a press
 const SWIPE_MS = 380;
 const SWIPE_FRACTION = 0.28; // of the screen width
@@ -31,10 +32,13 @@ export class HandInput {
     this.active = false;
     this.hovered = new Set();
     this.zoomLast = null;
+    this.drawn = false;
+    this.lastUpdate = 0;
   }
 
   async start() {
     this.active = true;
+    this.statusText = null;
     this.handlers.status?.("Starting camera…");
     try {
       await this.tracker.start();
@@ -57,13 +61,23 @@ export class HandInput {
     this.draw();
   }
 
-  // Call once a frame.
+  // Call once a frame. Gestures are read when the camera reports (12 to 30
+  // times a second); pointers glide, and drags follow them, every frame.
   update(now = performance.now()) {
+    const dt = Math.min(now - this.lastUpdate, 100);
+    this.lastUpdate = now;
     if (this.ready) {
       const detected = this.tracker.detect();
-      if (detected) this.process(detected, now);
-      this.handlers.status?.(this.hands.size ? `Hands: ${[...this.hands.values()].map((h) => h.gesture).join(" · ")}` : "Show your hands to the camera");
+      if (detected) this.process(detected, this.tracker.lastTime);
+      const text = this.hands.size ? `Hands: ${[...this.hands.values()].map((h) => h.gesture).join(" · ")}` : "Show your hands to the camera";
+      if (text !== this.statusText) this.handlers.status?.((this.statusText = text));
     }
+    for (const h of this.hands.values()) {
+      h.x = h.gx.step(h.tx, dt);
+      h.y = h.gy.step(h.ty, dt);
+      if (h.grab && h.gesture === "pinch") this.drag(h);
+    }
+    this.zoom();
     this.draw();
   }
 
@@ -74,7 +88,7 @@ export class HandInput {
       seen.add(id);
       let h = this.hands.get(id);
       if (!h) {
-        h = { id, lm: landmarks, gesture: "point", grab: null, fx: new OneEuro(...POINTER_FILTER), fy: new OneEuro(...POINTER_FILTER), trail: [] };
+        h = { id, lm: landmarks, gesture: "point", grab: null, fx: new OneEuro(...POINTER_FILTER), fy: new OneEuro(...POINTER_FILTER), gx: new Glide(GLIDE_MS), gy: new Glide(GLIDE_MS), trail: [] };
         this.hands.set(id, h);
       }
       h.lastSeen = now;
@@ -82,8 +96,9 @@ export class HandInput {
       const { gesture, cursor, size } = classify(h.lm, h.gesture === "pinch");
       h.gesture = gesture;
       h.size = size;
-      h.x = h.fx.filter(cursor.x * W, now);
-      h.y = h.fy.filter(cursor.y * H, now);
+      h.tx = h.fx.filter(cursor.x * W, now);
+      h.ty = h.fy.filter(cursor.y * H, now);
+      if (h.x === undefined) { h.x = h.gx.step(h.tx, 0); h.y = h.gy.step(h.ty, 0); }
       this.trackSwipe(h, now);
     }
     for (const [id, h] of this.hands) {
@@ -95,15 +110,23 @@ export class HandInput {
       if (h.gesture === "pinch") {
         h.openSince = null;
         if (!h.grab) this.press(h);
-        else this.drag(h);
       } else if (h.grab) {
         h.openSince ??= now;
         if (now - h.openSince >= RELEASE_GRACE_MS) this.release(h);
       }
     }
 
-    // Two hands pinching empty space: spread to zoom in, bring together to
-    // zoom out.
+    const hover = [];
+    for (const h of this.hands.values()) {
+      h.over = !h.grab || h.grab.kind === "click" ? this.targetAt(h.tx, h.ty)?.clickable ?? null : null;
+      hover.push(h.over);
+    }
+    this.setHovered(hover.filter(Boolean));
+  }
+
+  // Two hands pinching empty space: spread to zoom in, bring together to
+  // zoom out.
+  zoom() {
     const orbiting = [...this.hands.values()].filter((h) => h.grab?.kind === "orbit");
     if (orbiting.length >= 2) {
       const [a, b] = orbiting;
@@ -111,10 +134,6 @@ export class HandInput {
       if (this.zoomLast) this.handlers.zoom?.(this.zoomLast / d);
       this.zoomLast = d;
     } else this.zoomLast = null;
-
-    const hover = [];
-    for (const h of this.hands.values()) if (!h.grab || h.grab.kind === "click") hover.push(this.targetAt(h.x, h.y)?.clickable);
-    this.setHovered(hover.filter(Boolean));
   }
 
   targetAt(x, y) {
@@ -125,6 +144,10 @@ export class HandInput {
   }
 
   press(h) {
+    // A pinch acts where the hand is now, not where the gliding pointer has
+    // got to, so the pointer catches up first.
+    h.x = h.gx.snap(h.tx);
+    h.y = h.gy.snap(h.ty);
     const t = this.targetAt(h.x, h.y);
     const at = { x: h.x, y: h.y };
     if (t?.range && !t.range.disabled) {
@@ -225,10 +248,12 @@ export class HandInput {
     }
     const ctx = this.ctx;
     ctx.setTransform(r, 0, 0, r, 0, 0);
+    if (!this.drawn && !this.hands.size) return; // already blank
     ctx.clearRect(0, 0, w, hgt);
+    this.drawn = this.hands.size > 0;
     for (const h of this.hands.values()) {
       const pinching = h.gesture === "pinch";
-      const over = this.hovered.size && this.targetAt(h.x, h.y)?.clickable;
+      const over = h.over;
       const color = h.gesture === "fist" ? "255,107,107" : "76,201,255";
       const radius = over ? 22 : 16;
       ctx.lineWidth = 2.5;

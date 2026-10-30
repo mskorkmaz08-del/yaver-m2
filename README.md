@@ -45,9 +45,10 @@ Without a key: say **"Yaver"** and then your request, click the orb, or hold **S
 
 - `index.html`, `style.css`: the page.
 - `src/editor.js`: the scene and its shapes, plus the commands that change them.
-- `src/hands.js`: reads the camera (MediaPipe).
+- `src/hands.js`: reads the camera (MediaPipe). Only new camera frames are looked at, at most 30 times a second (12 while no hand is in view), so the laptop stays cool.
+- `src/hand-worker.js`: runs the hand model in the background so the screen never waits for it.
 - `src/gestures.js`: turns hand points into gestures.
-- `src/filters.js`: smooths the pointer.
+- `src/filters.js`: smooths the pointer (One Euro filter on each camera report, then a glide between reports every screen frame, so it moves smoothly whatever the camera).
 - `src/hand3d.js`: draws the pointers.
 - `src/shelf.js`: the shape shelf.
 - `src/helpicons.js`: the help icons.
@@ -76,6 +77,8 @@ Without a key: say **"Yaver"** and then your request, click the orb, or hold **S
   - `tts-worker.js`: the Kokoro voice.
   - `llm-worker.js`: runs the model off the main thread.
 - `manifest.webmanifest`, `icons/`, `sw.js`: make it an installable app.
+
+Both 3D scenes draw at most 60 frames a second at no more than 1.5 pixels per point, and the Studio only redraws when something changed.
 
 Bump the `?v=` number in `index.html` and on every `?v=` import (`src/app.js`, `src/studio.js`, `src/shelf.js`, `src/handinput.js`, `src/assistant/*.js`, `src/academy/*.js`) on every change, so browsers fetch the new files.
 

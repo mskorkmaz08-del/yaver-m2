@@ -1,8 +1,8 @@
 // Module 1: electronics fundamentals. Voltage, current and resistance; the
 // LED and the resistor colour code; the breadboard.
 import * as THREE from "three";
-import { tween, ease } from "./anim.js?v=17";
-import { battery9v, resistor, led, breadboard, wirePath, roundedPath, jumperWire, pinWorld, resistorBands, formatOhms, BAND_NAMES, LED_COLORS, WIRE_COLORS } from "./parts.js?v=17";
+import { tween, ease } from "./anim.js?v=18";
+import { battery9v, resistor, led, breadboard, wirePath, roundedPath, jumperWire, pinWorld, resistorBands, formatOhms, BAND_NAMES, LED_COLORS, WIRE_COLORS } from "./parts.js?v=18";
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const E12 = [10, 12, 15, 18, 22, 27, 33, 39, 47, 56, 68, 82];

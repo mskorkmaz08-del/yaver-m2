@@ -2,7 +2,7 @@
 // streams straight to Gemini, and Gemini streams its spoken answer straight
 // back, so Yaver answers in well under a second, in a natural voice, and can
 // be interrupted just by talking. Needs a free Gemini key (see keys.js).
-import { jarvisOutput } from "./voice.js?v=17";
+import { jarvisOutput } from "./voice.js?v=18";
 
 const API = "https://generativelanguage.googleapis.com/v1beta";
 const WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";

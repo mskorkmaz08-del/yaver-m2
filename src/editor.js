@@ -41,8 +41,12 @@ export class Editor extends EventTarget {
     this.currentShape = "cube";
     this.currentColor = COLORS[0];
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Draws only when something changed (see render()), at no more than 1.5
+    // pixels per point: on a Retina screen, full resolution is more than
+    // twice the work for a difference you can barely see.
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    this.dirty = true;
     this.renderer.shadowMap.enabled = true;
     container.appendChild(this.renderer.domElement);
 
@@ -82,12 +86,16 @@ export class Editor extends EventTarget {
     const w = this.container.clientWidth || window.innerWidth;
     const h = this.container.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h);
+    this.w = w;
+    this.h = h;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.dirty = true;
   }
 
-  get width() { return this.renderer.domElement.clientWidth; }
-  get height() { return this.renderer.domElement.clientHeight; }
+  // Kept from resize(): reading the canvas's size can force a page layout.
+  get width() { return this.w; }
+  get height() { return this.h; }
 
   // ---- View -------------------------------------------------------------
 
@@ -99,6 +107,7 @@ export class Editor extends EventTarget {
       this.target.z + radius * Math.sin(phi) * Math.cos(theta)
     );
     this.camera.lookAt(this.target);
+    this.dirty = true;
   }
 
   orbitBy(dTheta, dPhi) {
@@ -147,14 +156,18 @@ export class Editor extends EventTarget {
   setColor(color, obj = this.selected) {
     this.currentColor = color;
     if (obj) obj.material.color.set(color);
+    this.dirty = true;
   }
 
   setScale(obj, s) {
     obj.scale.setScalar(THREE.MathUtils.clamp(s, MIN_SCALE, MAX_SCALE));
+    this.dirty = true;
   }
 
   setHovered(objs) {
-    this.hovered = new Set(objs.filter(Boolean));
+    const next = new Set(objs.filter(Boolean));
+    if (next.size === this.hovered.size && [...next].every((o) => this.hovered.has(o))) return;
+    this.hovered = next;
     this.refreshHighlights();
   }
 
@@ -164,6 +177,7 @@ export class Editor extends EventTarget {
       o.material.emissive.set(o.material.color);
       o.material.emissiveIntensity = level;
     }
+    this.dirty = true;
   }
 
   // ---- Screen <-> world -------------------------------------------------
@@ -205,11 +219,16 @@ export class Editor extends EventTarget {
     return this.camera.position.distanceTo(v);
   }
 
-  render() {
+  // Draws the scene if anything changed since last time (or `force`).
+  // Moving an object directly? Set `editor.dirty = true`.
+  render(force = false) {
+    if (!this.dirty && !force) return;
+    this.dirty = false;
     this.renderer.render(this.scene, this.camera);
   }
 
   emit(name) {
+    this.dirty = true;
     this.dispatchEvent(new Event(name));
   }
 }

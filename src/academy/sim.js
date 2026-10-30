@@ -8,10 +8,10 @@
 // wiring: no common ground, a motor on the wrong pins or a wire to the wrong
 // GPIO behave just as they would on the bench.
 import * as THREE from "three";
-import { tween, ease } from "./anim.js?v=17";
-import * as P from "./parts.js?v=17";
-import { SketchRunner } from "./sketch.js?v=17";
-import { dispose } from "./stage.js?v=17";
+import { tween, ease } from "./anim.js?v=18";
+import * as P from "./parts.js?v=18";
+import { SketchRunner } from "./sketch.js?v=18";
+import { dispose } from "./stage.js?v=18";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
