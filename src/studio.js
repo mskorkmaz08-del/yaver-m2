@@ -1,13 +1,13 @@
 // The 3D Studio: loaded the first time you open it from Yaver's home screen.
 // The ?v= number defeats browser caching after an update (GitHub Pages lets
 // browsers keep files for 10 minutes). Bump it everywhere together.
-import { Editor, SHAPES, COLORS } from "./editor.js?v=17";
-import { sharedTracker } from "./hands.js?v=17";
-import { classify } from "./gestures.js?v=17";
-import { Hands3D } from "./hand3d.js?v=17";
-import { Shelf } from "./shelf.js?v=17";
-import { gestureIcon } from "./helpicons.js?v=17";
-import { OneEuro } from "./filters.js?v=17";
+import { Editor, SHAPES, COLORS } from "./editor.js?v=18";
+import { sharedTracker } from "./hands.js?v=18";
+import { classify } from "./gestures.js?v=18";
+import { Hands3D } from "./hand3d.js?v=18";
+import { Shelf } from "./shelf.js?v=18";
+import { gestureIcon } from "./helpicons.js?v=18";
+import { OneEuro, Glide } from "./filters.js?v=18";
 
 const STUDIO_VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 document.getElementById("version").textContent = `v${STUDIO_VERSION}`;
@@ -21,9 +21,13 @@ const RELEASE_GRACE_MS = 140; // a pinch must stay open this long to let go, so 
 const LOST_HAND_MS = 300;  // keep a hand (and what it holds) through brief tracking dropouts
 const DEPTH_GAIN = 2.2;    // how strongly pushing your hand toward the camera sends objects away
 const REF_HAND_SIZE = 0.2; // typical hand size on camera at a comfortable reach
-// Pointer and depth filters (see filters.js): steady at rest, quick when moving.
+// Pointer and depth filters (see filters.js): steady at rest, quick when
+// moving. Each camera report is filtered, then the pointer glides between
+// reports every screen frame, so it moves smoothly whatever the camera.
 const POINTER_FILTER = [1.0, 0.007];
 const SIZE_FILTER = [0.5, 3];
+const GLIDE_MS = 55;
+const MAX_FPS = 60; // a 120 Hz screen doesn't need the scene drawn 120 times a second
 
 const editor = new Editor(document.getElementById("stage"));
 const overlay = document.getElementById("hands-overlay");
@@ -189,6 +193,7 @@ shelf.el.addEventListener("pointerup", (e) => {
   const start = mouse.fromShelf;
   if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 6) {
     mouse.obj.position.copy(editor.target).add({ x: 0, y: 0.5, z: 0 });
+    editor.dirty = true;
   } else {
     dropAt(mouse.obj, e.clientX, e.clientY);
   }
@@ -209,6 +214,7 @@ function mouseDrag(e) {
     const p = editor.screenToWorld(e.clientX, e.clientY, mouse.dist).add(mouse.offset);
     p.y = Math.max(p.y, 0);
     mouse.obj.position.copy(p);
+    editor.dirty = true;
   } else {
     editor.orbitBy(-(e.clientX - mouse.x) * 0.006, -(e.clientY - mouse.y) * 0.006);
     mouse.x = e.clientX;
@@ -241,6 +247,7 @@ function updateHand(id, raw, now) {
     h = {
       id, lm: raw, gesture: "point", since: now, fired: false, grab: null,
       fx: new OneEuro(...POINTER_FILTER), fy: new OneEuro(...POINTER_FILTER), fsize: new OneEuro(...SIZE_FILTER),
+      gx: new Glide(GLIDE_MS), gy: new Glide(GLIDE_MS), gsize: new Glide(GLIDE_MS),
     };
     hands.set(id, h);
   }
@@ -258,13 +265,26 @@ function updateHand(id, raw, now) {
     h.since = now;
     h.fired = false;
   }
-  h.size = h.fsize.filter(size, now);
-  h.x = h.fx.filter(cursor.x * editor.width, now);
-  h.y = h.fy.filter(cursor.y * editor.height, now);
+  // Where the filters say the hand is; h.x, h.y and h.size glide toward it
+  // (see glideHands).
+  h.tsize = h.fsize.filter(size, now);
+  h.tx = h.fx.filter(cursor.x * editor.width, now);
+  h.ty = h.fy.filter(cursor.y * editor.height, now);
+  if (h.x === undefined) glide(h, 0);
   return h;
 }
 
+function glide(h, dt) {
+  h.x = h.gx.step(h.tx, dt);
+  h.y = h.gy.step(h.ty, dt);
+  h.size = h.gsize.step(h.tsize, dt);
+}
+
 function startGrab(h) {
+  // A pinch acts where the hand is now, not where the gliding pointer has
+  // got to, so the pointer catches up first.
+  h.x = h.gx.snap(h.tx);
+  h.y = h.gy.snap(h.ty);
   const shape = shelf.shapeAt(h.x, h.y, SHELF_PAD);
   if (shape) {
     const { obj, dist } = addFromShelf(shape, h.x, h.y);
@@ -296,6 +316,7 @@ function moveGrab(h) {
     const p = editor.screenToWorld(h.x, h.y, dist).add(g.offset);
     p.y = Math.max(p.y, 0);
     g.obj.position.copy(p);
+    editor.dirty = true;
   } else {
     editor.orbitBy(-(h.x - g.x) * 0.006, -(h.y - g.y) * 0.006);
     g.x = h.x;
@@ -321,6 +342,28 @@ function handleTwoHands(a, b) {
   }
 }
 
+// Every screen frame: glide each pointer toward where its hand was last seen,
+// and carry along whatever it holds. Hands that are letting go hold still
+// instead of dragging the object along as the fingers open.
+function moveHands(dt) {
+  const all = [...hands.values()];
+  for (const h of all) glide(h, dt);
+  const pinching = all.filter((h) => h.grab);
+  if (pinching.length >= 2) {
+    handleTwoHands(pinching[0], pinching[1]);
+  } else {
+    if (twoHand) {
+      // Coming out of a two-hand move: re-anchor the remaining hand so the
+      // object doesn't jump.
+      twoHand = null;
+      for (const h of pinching) startGrab(h);
+    }
+    for (const h of pinching) if (h.gesture === "pinch") moveGrab(h);
+  }
+}
+
+// Each camera report: read the gestures, then pick things up, let go, and
+// light up what's under each hand.
 function processHands(detected, now) {
   const seen = new Set();
   for (const { id, landmarks } of detected) {
@@ -352,26 +395,10 @@ function processHands(detected, now) {
     }
   }
 
-  // Hands that are letting go (or briefly lost) hold still instead of
-  // dragging the object along as the fingers open.
-  const steady = (h) => seen.has(h.id) && h.gesture === "pinch";
-  const pinching = all.filter((h) => h.grab);
-  if (pinching.length >= 2) {
-    handleTwoHands(pinching[0], pinching[1]);
-  } else {
-    if (twoHand) {
-      // Coming out of a two-hand move: re-anchor the remaining hand so the
-      // object doesn't jump.
-      twoHand = null;
-      for (const h of pinching) startGrab(h);
-    }
-    for (const h of pinching) if (steady(h)) moveGrab(h);
-  }
-
   handHovered = [];
   for (const h of all) {
-    if (h.grab || shelf.contains(h.x, h.y, SHELF_PAD)) continue;
-    const target = editor.pickAt(h.x, h.y, PICK_SLOP);
+    if (h.grab || shelf.contains(h.tx, h.ty, SHELF_PAD)) continue;
+    const target = editor.pickAt(h.tx, h.ty, PICK_SLOP);
     handHovered.push(target);
     const held = now - h.since;
     if (h.gesture === "peace" && !h.fired && held > ADD_HOLD_MS) {
@@ -401,13 +428,20 @@ function handDepth(h) {
 
 // The hands themselves are drawn in 3D (see hand3d.js). This flat layer only
 // shows the progress ring while holding a peace sign or fist.
+// Resizing a canvas reallocates it, so only when its size really changed;
+// and an empty layer stays untouched.
+let ringsDrawn = false;
 function drawHoldRings(now) {
-  const w = (overlay.width = overlay.clientWidth);
-  const hgt = (overlay.height = overlay.clientHeight);
-  ctx.clearRect(0, 0, w, hgt);
+  const w = editor.width, hgt = editor.height; // the overlay covers the scene
+  if (overlay.width !== w || overlay.height !== hgt) {
+    overlay.width = w;
+    overlay.height = hgt;
+  } else if (ringsDrawn) ctx.clearRect(0, 0, w, hgt);
+  ringsDrawn = false;
   for (const h of hands.values()) {
     const holdMs = h.gesture === "peace" ? ADD_HOLD_MS : h.gesture === "fist" ? DELETE_HOLD_MS : 0;
     if (!holdMs || h.fired) continue;
+    ringsDrawn = true;
     const t = Math.min((now - h.since) / holdMs, 1);
     ctx.strokeStyle = h.gesture === "fist" ? "rgba(255,107,107,0.9)" : "rgba(207,232,255,0.9)";
     ctx.lineWidth = 3;
@@ -422,25 +456,36 @@ function drawHoldRings(now) {
 let trackingReady = false;
 let active = true; // false while the home screen is showing
 
-function loop() {
+let lastFrame = 0;
+function setStatus(text) {
+  if (statusEl.textContent !== text) statusEl.textContent = text; // an unchanged line costs no layout
+}
+
+function loop(now) {
   requestAnimationFrame(loop);
   if (!active) return;
-  const now = performance.now();
+  if (now - lastFrame < 1000 / MAX_FPS - 2) return;
+  const dt = Math.min(now - lastFrame, 100);
+  lastFrame = now;
   if (trackingReady) {
     const detected = tracker.detect();
-    if (detected) processHands(detected, now);
+    if (detected) processHands(detected, tracker.lastTime);
     const list = [...hands.values()];
-    statusEl.textContent = list.length
+    setStatus(list.length
       ? `Hands: ${list.map((h) => `${h.id} ${h.gesture}`).join(" · ")}`
-      : "Show your hands to the camera";
+      : "Show your hands to the camera");
   }
-  hands3d.update(editor, hands, handDepth);
+  moveHands(dt);
+  if (hands.size || hands3d.pointers.size) {
+    hands3d.update(editor, hands, handDepth);
+    editor.dirty = true;
+  }
   drawHoldRings(now);
   updateDropTargets();
   updateHelpPeek();
   editor.render();
 }
-loop();
+requestAnimationFrame(loop);
 
 // ---- Opening and closing ----------------------------------------------------
 
@@ -469,6 +514,7 @@ export function pause() {
 export function resume() {
   if (active) return;
   active = true;
+  lastFrame = 0;
   editor.resize();
   startCamera();
 }

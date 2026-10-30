@@ -30,3 +30,41 @@ export class OneEuro {
     return this.x;
   }
 }
+
+// Glides a value toward a target every screen frame (a critically damped
+// spring, like Unity's SmoothDamp). The camera reports hands only 12 to 30
+// times a second, and less evenly on a poor camera; gliding between those
+// reports keeps the pointer moving smoothly at the screen's own rate.
+export class Glide {
+  // smoothMs: roughly how long it takes to catch up with the target.
+  constructor(smoothMs = 55) {
+    this.smooth = smoothMs / 1000;
+    this.x = null;
+    this.v = 0;
+  }
+
+  // Jumps straight to `value` and stops there.
+  snap(value) {
+    this.x = value;
+    this.v = 0;
+    return value;
+  }
+
+  // `dt` is in milliseconds since the last step.
+  step(target, dt) {
+    if (this.x === null || !Number.isFinite(this.x)) {
+      this.x = target;
+      this.v = 0;
+      return target;
+    }
+    const t = Math.min(Math.max(dt, 0), 100) / 1000;
+    const omega = 2 / this.smooth;
+    const k = omega * t;
+    const decay = 1 / (1 + k + 0.48 * k * k + 0.235 * k * k * k);
+    const change = this.x - target;
+    const temp = (this.v + omega * change) * t;
+    this.v = (this.v - omega * temp) * decay;
+    this.x = target + (change + temp) * decay;
+    return this.x;
+  }
+}

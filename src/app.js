@@ -2,7 +2,7 @@
 // Robotics Academy open on top of it (buttons, voice, or the #studio and
 // #academy addresses). Each is loaded the first time it's needed, and the
 // camera only runs while one of them is open.
-import { startAssistant } from "./assistant/assistant.js?v=17";
+import { startAssistant } from "./assistant/assistant.js?v=18";
 
 const VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 for (const el of document.querySelectorAll(".app-version")) el.textContent = `v${VERSION}`;
@@ -25,7 +25,7 @@ function show(name) {
 async function openStudio() {
   if (location.hash !== "#studio") history.pushState(null, "", "#studio");
   show("studio");
-  opening ??= import("./studio.js?v=17").then((m) => {
+  opening ??= import("./studio.js?v=18").then((m) => {
     studio = m;
     if (view() !== "studio") studio.pause(); // went home while it was loading
   });
@@ -38,7 +38,7 @@ async function openAcademy(sub = "") {
   const hash = sub ? `#academy/${sub}` : "#academy";
   if (location.hash !== hash) history.pushState(null, "", hash);
   show("academy");
-  openingAcademy ??= import("./academy/academy.js?v=17").then((m) => {
+  openingAcademy ??= import("./academy/academy.js?v=18").then((m) => {
     academy = m;
     academy.setHome(goHome);
     if (view() !== "academy") academy.pause();

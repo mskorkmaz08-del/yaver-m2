@@ -3,15 +3,17 @@
 // picking. Units are centimetres, so parts are modelled at their real size.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { tween, ease } from "./anim.js?v=17";
+import { tween, ease } from "./anim.js?v=18";
 
 const tmp = new THREE.Vector3();
 
 export class Stage {
   constructor(container) {
     this.container = container;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // 1.5 pixels per point at most: full Retina resolution is more than
+    // twice the work for a difference you can barely see.
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -281,6 +283,10 @@ class Labels {
     const { ctx } = this;
     ctx.clearRect(0, 0, this.stage.width, this.stage.height);
     const world = new THREE.Vector3();
+    // Measure every label before moving any: interleaving the two makes the
+    // browser lay out the page again for each label, every frame.
+    const sizes = new Map();
+    for (const item of this.items) sizes.set(item, [item.el.offsetWidth, item.el.offsetHeight]);
     for (const item of this.items) {
       if (item.anchor.isObject3D) {
         world.copy(item.offset ?? new THREE.Vector3());
@@ -288,14 +294,15 @@ class Labels {
       } else world.copy(item.anchor);
       const p = this.stage.project(world);
       const visible = p.front && (!item.anchor.isObject3D || isShown(item.anchor));
-      item.el.style.visibility = visible ? "visible" : "hidden";
+      const visibility = visible ? "visible" : "hidden";
+      if (item.el.style.visibility !== visibility) item.el.style.visibility = visibility;
       if (!visible) continue;
       const lx = p.x + item.dx;
       const ly = p.y + item.dy;
-      const w = item.el.offsetWidth;
-      const h = item.el.offsetHeight;
+      const [w, h] = sizes.get(item);
       const left = item.dx >= 0 ? lx : lx - w;
-      item.el.style.transform = `translate(${left}px, ${ly - h / 2}px)`;
+      const transform = `translate(${left}px, ${ly - h / 2}px)`;
+      if (item.el.style.transform !== transform) item.el.style.transform = transform;
       ctx.strokeStyle = "rgba(124, 214, 255, 0.75)";
       ctx.fillStyle = "#9fe3ff";
       ctx.lineWidth = 1.2;

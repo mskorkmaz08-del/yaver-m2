@@ -3,14 +3,14 @@
 // it is opened from Yaver's home screen. Hands (through the webcam) or the
 // mouse drive everything: pinch to press buttons and grab parts, move to
 // turn the view, both hands to zoom, and an open-hand swipe to change step.
-import { Stage } from "./stage.js?v=17";
-import { stepTweens } from "./anim.js?v=17";
-import { LessonContext } from "./course.js?v=17";
-import { ELECTRONICS } from "./lessons-electronics.js?v=17";
-import { ARDUINO } from "./lessons-arduino.js?v=17";
-import { ESP32 } from "./lessons-esp32.js?v=17";
-import { Simulator, buildRobot } from "./sim.js?v=17";
-import { HandInput } from "../handinput.js?v=17";
+import { Stage } from "./stage.js?v=18";
+import { stepTweens } from "./anim.js?v=18";
+import { LessonContext } from "./course.js?v=18";
+import { ELECTRONICS } from "./lessons-electronics.js?v=18";
+import { ARDUINO } from "./lessons-arduino.js?v=18";
+import { ESP32 } from "./lessons-esp32.js?v=18";
+import { Simulator, buildRobot } from "./sim.js?v=18";
+import { HandInput } from "../handinput.js?v=18";
 
 const VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 export const MODULES = [ELECTRONICS, ARDUINO, ESP32];
@@ -301,12 +301,18 @@ function updateInsets() {
   stage.setInsets(left, right);
 }
 
+// At most 60 frames a second: a 120 Hz screen gains nothing from twice the
+// drawing but heat. The free space for the view is measured a few times a
+// second rather than every frame (measuring the page forces a layout).
+const MAX_FPS = 60;
 let lastTime = performance.now();
+let lastInsets = 0;
 function loop(now) {
   requestAnimationFrame(loop);
+  if (!active) { lastTime = now; return; }
+  if (now - lastTime < 1000 / MAX_FPS - 2) return;
   const dt = Math.min((now - lastTime) / 1000, 0.05);
   lastTime = now;
-  if (!active) return;
   stepTweens(dt * 1000);
   input.update(now);
   if (view === "sim") {
@@ -316,7 +322,7 @@ function loop(now) {
   }
   ctx?.tick(dt);
   if (showcase) showcase.rotation.y += dt * 0.3;
-  updateInsets();
+  if (now - lastInsets > 250) { lastInsets = now; updateInsets(); }
   stage.render();
 }
 requestAnimationFrame(loop);

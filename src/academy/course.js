@@ -4,8 +4,8 @@
 // text, camera, enter(ctx, state) }] }. Each step's enter() sets the scene up
 // from scratch, so steps can be visited in any order.
 import * as THREE from "three";
-import { tween, wait, ease, stopTweens } from "./anim.js?v=17";
-import * as parts from "./parts.js?v=17";
+import { tween, wait, ease, stopTweens } from "./anim.js?v=18";
+import * as parts from "./parts.js?v=18";
 
 const PULSE = new THREE.Color("#4cc9ff");
 
