@@ -65,7 +65,7 @@ export class HandTracker {
   async load() {
     try {
       await new Promise((resolve, reject) => {
-        const worker = new Worker(new URL("./hand-worker.js?v=18", import.meta.url));
+        const worker = new Worker(new URL("./hand-worker.js?v=19", import.meta.url));
         worker.onmessage = ({ data }) => {
           if (data.type === "ready") { this.stats.delegate = data.delegate; resolve(); }
           else if (data.type === "error") reject(new Error(data.message));

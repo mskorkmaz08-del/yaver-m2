@@ -23,6 +23,11 @@ export function translate(src) {
     return `__S${strings.length - 1}__`;
   });
 
+  // Servo objects (the Servo library): "Servo s;" and "Servo s[4];".
+  code = code
+    .replace(/\bServo\s+(\w+)\s*\[\s*(\w+)\s*\]\s*;/g, "let $1 = Array.from(new Array($2), () => __Servo());")
+    .replace(/\bServo\s+(\w+(?:\s*,\s*\w+)*)\s*;/g, (m, names) => names.split(",").map((n) => `let ${n.trim()} = __Servo();`).join(" "));
+
   code = code
     .replace(/^\s*#include[^\n]*/gm, "")
     .replace(/^\s*#define\s+(\w+)\s+([^\n]+)/gm, "const $1 = $2;")
@@ -151,7 +156,9 @@ function addLoopTicks(code) {
 
 // `hw` is the simulated board: { pinMode(pin, mode), digitalWrite(pin, v),
 // digitalRead(pin), analogRead(pin), pwm(pin, duty 0..1), pulseIn(pin, level,
-// timeoutUs) → µs, serial(text), crash(message) }.
+// timeoutUs) → µs, serial(text), crash(message) }, and optionally
+// tone(pin, hz) (0 = silent), servo(pin, degrees) and constants() → extra
+// names for the sketch, such as A0 on an Uno.
 export class SketchRunner {
   constructor(hw) {
     this.hw = hw;
@@ -222,6 +229,7 @@ export class SketchRunner {
     const pinNum = (p) => Number(p);
     const ledc = new Map(); // old-style channels → { pins, bits }
     const pinBits = new Map();
+    const tones = new Map(); // pin → timer that ends a tone(pin, hz, ms)
     const fmt = (v, base) => {
       if (typeof v === "number" && base !== undefined) {
         if (base === 2 || base === 8 || base === 16) return Math.trunc(v).toString(base).toUpperCase();
@@ -290,6 +298,26 @@ export class SketchRunner {
       sizeof: (a) => (Array.isArray(a) ? a.length * 4 : 4),
       String: (v) => String(v),
       yield: () => r.breathe(true),
+      tone: (p, hz, ms) => {
+        r.check();
+        const pin = pinNum(p);
+        hw.tone?.(pin, Number(hz) || 0);
+        clearTimeout(tones.get(pin));
+        if (ms) tones.set(pin, setTimeout(() => hw.tone?.(pin, 0), Number(ms)));
+      },
+      noTone: (p) => { clearTimeout(tones.get(pinNum(p))); hw.tone?.(pinNum(p), 0); },
+      __Servo: () => {
+        let pin = null, angle = 90;
+        return {
+          attach: (p) => { pin = pinNum(p); hw.pinMode(pin, "OUTPUT"); hw.servo?.(pin, angle); return 1; },
+          detach: () => { pin = null; },
+          attached: () => pin !== null,
+          write: (a) => { r.check(); angle = Math.min(Math.max(Number(a), 0), 180); if (pin !== null) hw.servo?.(pin, angle); },
+          writeMicroseconds: (us) => { angle = Math.min(Math.max(((us - 544) / (2400 - 544)) * 180, 0), 180); if (pin !== null) hw.servo?.(pin, angle); },
+          read: () => Math.round(angle),
+        };
+      },
+      ...(hw.constants?.() ?? {}),
     };
   }
 }

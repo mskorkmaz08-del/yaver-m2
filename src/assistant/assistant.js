@@ -1,11 +1,11 @@
 // Yaver, the talking assistant. With a Gemini key: a real-time voice
 // conversation through Gemini Live (live.js). Without one: wake word or button
 // → speech to text → studio command or language model → spoken answer.
-import { Brain } from "./brain.js?v=18";
-import { Listener, Speaker } from "./voice.js?v=18";
-import { parseCommand, navCommand, describeScene } from "./commands.js?v=18";
-import { geminiSettings, saveKey, forgetKey } from "./keys.js?v=18";
-import { LiveSession } from "./live.js?v=18";
+import { Brain } from "./brain.js?v=19";
+import { Listener, Speaker } from "./voice.js?v=19";
+import { parseCommand, navCommand, describeScene, projectRequest } from "./commands.js?v=19";
+import { geminiSettings, saveKey, forgetKey } from "./keys.js?v=19";
+import { LiveSession } from "./live.js?v=19";
 
 const HISTORY_KEY = "yaver-chat";
 const HISTORY_TURNS = 12; // messages kept for context (the local model's window is small)
@@ -28,6 +28,11 @@ const LIVE_TOOLS = [
     parameters: { type: "OBJECT", properties: { command: { type: "STRING", description: "The command, in plain English." } }, required: ["command"] },
   },
   { name: "describe_scene", description: "Says what is in the 3D Studio right now." },
+  {
+    name: "design_project",
+    description: "Opens the project tutor in the Robotics Academy and has it design an electronics project he describes (Arduino or ESP32): the 3D parts, where every wire goes, the code, and build steps. Use it whenever he wants to make or build a gadget, circuit or robot, e.g. a piano from an Arduino. Takes about half a minute; tell him it's on its way.",
+    parameters: { type: "OBJECT", properties: { project: { type: "STRING", description: "What he wants to build, in his words, with any details he gave." } }, required: ["project"] },
+  },
 ];
 
 function loadHistory() {
@@ -185,10 +190,18 @@ export function startAssistant(app) {
   // Opening and leaving the studio, and studio commands, are instant and never
   // need the model. A studio command from the home screen opens the studio
   // first. Returns what was done, or null if it isn't a studio command.
+  // Opens the Academy's project tutor and has it design `what`.
+  async function startProject(what) {
+    const academy = await app.openAcademy();
+    academy.plan(what);
+  }
+
   async function studioCommand(request) {
     // In the Academy, "next", "back", "lesson 3"… come first.
     const academyReply = app.academy()?.command(request);
     if (academyReply) return academyReply;
+    const project = navCommand(request) ? null : projectRequest(request);
+    if (project) { startProject(project); return "Splendid. I'm designing it now: give me about half a minute, and the plan will appear in the Academy."; }
     const nav = navCommand(request);
     const action = nav ? null : parseCommand(request);
     if (nav === "studio") { const was = app.view(); app.openStudio(); return was === "studio" ? "We're already in the studio, sir." : "Opening the studio."; }
@@ -307,6 +320,7 @@ export function startAssistant(app) {
         declarations: LIVE_TOOLS,
         run: async (name, args) => {
           if (name === "describe_scene") return describeScene(app.studio()?.editor ?? null) || "The studio is empty.";
+          if (name === "design_project") { startProject(String(args.project || "")); return "The project tutor is designing it now; the plan appears on screen in about half a minute."; }
           return (await studioCommand(String(args.command || ""))) ?? "That isn't a studio command I know. Try: add, delete, clear, bigger, smaller, paint, turn, zoom.";
         },
       },

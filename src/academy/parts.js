@@ -1025,3 +1025,6 @@ export function wirePath(points, color = "#e53935", radius = 0.08) {
   m.userData.curve = curve;
   return m;
 }
+
+// For parts built elsewhere (the project tutor's extra parts).
+export { makePart, addPin, PITCH };

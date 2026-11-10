@@ -23,6 +23,22 @@ Click **Robotics Academy** on the home screen, or say "open the course". Every l
 
 With the camera: pinch to press buttons, drag sliders and grab parts; pinch empty space and move to turn the view; pinch with both hands to zoom; sweep an open hand sideways to change step. The mouse and arrow keys work too. Voice: "next", "back", "lesson 5", "open the simulator", "upload".
 
+## Project tutor
+
+At the top of the Academy, **Make your own project**: type (or tell Yaver) what you want to build, such as "a piano from an Arduino". The AI designs it and the Academy shows it in 3D:
+
+- **What you'll build** and the shopping list.
+- **Build steps**: the parts drop onto the bench a few at a time, and every jumper wire is drawn pin to pin, with a list of what connects where and why.
+- **The code**, explained a few lines at a time with those lines highlighted. ⧉ Copy puts it on the clipboard for the Arduino IDE.
+- **Try it**: ▶ Run the code runs the sketch against the circuit exactly as it's wired. Buttons can be pressed (click, pinch, or keys 1 to 9), the buzzer really plays, LEDs light, servos turn, and sliders stand in for knobs, light and distance sensors. Serial output appears under the code.
+- **Change it**: type a change ("add a volume knob", "use an ESP32") and the plan is redrawn.
+
+Projects are kept in this browser, under the form. The piano example works without any key.
+
+Which AI designs it: Google Gemini, with the same free key Yaver's voice uses (pasted once, or Mark One's). If a Claude (Anthropic) API key is pasted instead, Claude (`claude-opus-5-5`) designs it; that key is paid per use. Both keys stay in this browser and go only to Google or Anthropic.
+
+By voice: "Yaver, I want to make a piano from an Arduino" (or anything with "make/build … Arduino/ESP32/circuit/robot…"). With Gemini Live, Yaver uses its `design_project` tool, and while a project is open it knows its parts, wiring and code, so you can ask it questions about them.
+
 ## Talking to Yaver
 
 **Fastest: Gemini Live.** Click "Add free Gemini key" under the orb and paste a free key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) once; it stays in this browser (Mark One's key is used automatically if it's there). Then "Yaver", the orb or Space starts a real-time voice conversation: your voice streams to Google and Yaver answers in under a second in the "Charon" voice. You can interrupt just by talking, it can search the web, and it runs studio commands. The conversation ends after 20 seconds of silence or a click on the orb.
@@ -63,7 +79,11 @@ Without a key: say **"Yaver"** and then your request, click the orb, or hold **S
   - `course.js`: what a lesson can do (labels, highlights, sliders, code and oscilloscope panels).
   - `lessons-electronics.js`, `lessons-arduino.js`, `lessons-esp32.js`: the lessons.
   - `sim.js`: the robot simulator (build, wire, the electrics, driving).
-  - `sketch.js`: runs Arduino sketches in the browser.
+  - `sketch.js`: runs Arduino sketches in the browser (with `tone()` and the Servo library).
+  - `planner.js`: the project tutor's AI: asks Gemini (or Claude) for a project plan and checks it.
+  - `project.js`: plays a project plan as a lesson: lays out the bench, wires it, explains the code, and simulates the circuit as wired.
+  - `project-parts.js`: the extra parts a plan can use (buzzer, potentiometer, servo, light sensor, any module) and the list of part types and pins.
+  - `project-examples.js`: the ready-made piano project.
 - `academy.css`: the Academy's styles.
 - `src/assistant/`: the voice assistant.
   - `assistant.js`: transcript, orb and wiring.
@@ -86,6 +106,6 @@ Bump the `?v=` number in `index.html` and on every `?v=` import (`src/app.js`, `
 
 1. Gesture 3D editor (done)
 2. Voice: wake word, speech, voice commands (first version done)
-3. Robotics Academy: course and robot simulator (first version done)
+3. Robotics Academy: course and robot simulator (first version done), and the AI project tutor
 4. Shaping, save and export, MCP tools
 5. Phone and ESP32
