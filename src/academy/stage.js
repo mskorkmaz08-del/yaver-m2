@@ -3,9 +3,15 @@
 // picking. Units are centimetres, so parts are modelled at their real size.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { tween, ease } from "./anim.js?v=18";
+import { tween, ease } from "./anim.js?v=19";
 
 const tmp = new THREE.Vector3();
+
+// True if the object and everything it sits in are visible.
+function shown(obj) {
+  for (let o = obj; o; o = o.parent) if (!o.visible) return false;
+  return true;
+}
 
 export class Stage {
   constructor(container) {
@@ -153,7 +159,7 @@ export class Stage {
   pick(sx, sy, objects = [this.root], test = null) {
     this.raycaster.setFromCamera(this.ndc(sx, sy), this.camera);
     for (const hit of this.raycaster.intersectObjects(objects, true)) {
-      if (!hit.object.visible || hit.object.userData.noPick) continue;
+      if (hit.object.userData.noPick || !shown(hit.object)) continue;
       if (!test || test(hit.object, hit)) return hit;
     }
     return null;

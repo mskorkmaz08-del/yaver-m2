@@ -49,6 +49,18 @@ function findCount(text) {
 
 const plural = (n, shape) => (n === 1 ? `a ${shape}` : `${n} ${shape === "torus" ? "tori" : shape + "s"}`);
 
+// "I want to make a piano from an Arduino": a project for the Academy's
+// project tutor. Returns what to build, or null.
+const HARDWARE = /\b(arduino|esp ?32|circuit|electronics?|breadboard|sensor|leds?|buzzer|servo|motor|robot|gadget|project|microcontroller|button|piano|alarm|light|lamp|thermometer|radar|clock)\b/;
+export function projectRequest(raw) {
+  const text = raw.toLowerCase().trim();
+  const m = text.match(/\b(?:i (?:want|would like|wanna|'d like) to|i'?m going to|help me|let'?s|can you help me|how (?:do|can|could|would) i|teach me (?:how )?to|show me how to|plan|design)\s+(?:make|build|create|do)\s+(.+)/)
+    || text.match(/\b(?:make|build|design) (?:me )?(an? .+?\b(?:with|from|using|on) (?:an? )?(?:arduino|esp ?32).*)/)
+    || text.match(/\bnew project:?\s+(.+)/);
+  if (!m || !HARDWARE.test(text)) return null;
+  return m[1].replace(/[.?!]+$/, "").trim() || null;
+}
+
 // Opening and leaving the 3D studio.
 export function navCommand(raw) {
   const text = raw.toLowerCase();

@@ -233,3 +233,39 @@ i.band { border-radius: 2px; width: 8px; height: 14px; vertical-align: -3px; mar
   .sim-tabs { top: auto; bottom: calc(52vh + 16px); }
   .ac-top { padding: 6px 10px; gap: 8px; }
 }
+
+/* ---- Project tutor --------------------------------------------------------- */
+
+.pj-make { margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.pj-form { display: flex; gap: 8px; align-items: flex-end; margin: 8px 0; }
+.pj-form textarea, .pj-change input, .pj-key input {
+  flex: 1; min-width: 0; resize: none; font: inherit; font-size: 13.5px; color: var(--text);
+  background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px;
+}
+.pj-form textarea:focus, .pj-change input:focus, .pj-key input:focus { outline: none; border-color: var(--accent); }
+.pj-status { font-size: 13px; color: var(--accent); display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.pj-status small { color: var(--muted); }
+.pj-err { color: #ffb3b3 !important; }
+.pj-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(76, 201, 255, 0.25); border-top-color: var(--accent); animation: pj-spin 0.8s linear infinite; flex: none; }
+@keyframes pj-spin { to { transform: rotate(360deg); } }
+.pj-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 10px; }
+.pj-chip { border-radius: 999px; padding: 4px 10px; font-size: 12px; color: var(--muted); }
+.pj-chip:hover, .pj-chip.hand-hover { color: var(--text); border-color: var(--accent); }
+.pj-saved-row { display: flex; gap: 6px; align-items: stretch; }
+.pj-saved-row .ac-card { flex: 1; min-width: 0; }
+.pj-del { position: static; align-self: center; }
+.pj-key { background: rgba(76, 201, 255, 0.07); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin: 8px 0; }
+.pj-key p { margin: 0 0 8px; }
+.pj-key a { color: var(--accent); }
+.pj-key details { margin-top: 8px; color: var(--muted); }
+.pj-key summary { cursor: pointer; }
+.pj-key-row { display: flex; gap: 8px; }
+.pj-list, .pj-wires { padding-left: 18px; margin: 4px 0 8px; }
+.pj-wires { list-style: none; padding-left: 0; }
+.pj-wires li { display: block; padding: 4px 0 4px 20px; position: relative; }
+.pj-wires small { color: var(--muted); }
+.pj-swatch { position: absolute; left: 0; top: 7px; width: 12px; height: 5px; border-radius: 3px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35); }
+.ac-text h4 { margin: 10px 0 2px; font-size: 12px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; }
+.pj-change { display: flex; gap: 8px; margin-top: 6px; }
+.pj-copy { border-radius: 999px; padding: 2px 10px; font-size: 11px; margin-top: -2px; }
+.pj-serial { margin: 0; padding: 0 14px; max-height: 140px; overflow-y: auto; font: 12px/1.45 ui-monospace, Menlo, monospace; color: #cfe8ff; white-space: pre-wrap; }

@@ -4,8 +4,8 @@
 // text, camera, enter(ctx, state) }] }. Each step's enter() sets the scene up
 // from scratch, so steps can be visited in any order.
 import * as THREE from "three";
-import { tween, wait, ease, stopTweens } from "./anim.js?v=18";
-import * as parts from "./parts.js?v=18";
+import { tween, wait, ease, stopTweens } from "./anim.js?v=19";
+import * as parts from "./parts.js?v=19";
 
 const PULSE = new THREE.Color("#4cc9ff");
 
@@ -302,7 +302,12 @@ export class LessonContext {
     });
   }
 
+  // Called when the lesson closes (for listeners and sounds a lesson starts).
+  onDispose(fn) { (this.disposers ??= []).push(fn); }
+
   dispose() {
+    for (const fn of this.disposers ?? []) fn();
+    this.disposers = [];
     this.clearStep();
     this.frames = [];
     this.ui.code.hidden = true;
@@ -315,7 +320,7 @@ export class LessonContext {
 
 // Minimal C/Arduino syntax colouring for the code panel.
 const KEYWORDS = /\b(void|int|long|unsigned|float|double|bool|const|char|byte|if|else|for|while|return|true|false|#define|#include|static|uint8_t|String)\b/g;
-const BUILTINS = /\b(pinMode|digitalWrite|digitalRead|analogWrite|analogRead|delay|delayMicroseconds|millis|micros|pulseIn|Serial|ledcAttach|ledcWrite|map|constrain|WiFi|setup|loop|HIGH|LOW|OUTPUT|INPUT_PULLUP|INPUT)\b/g;
+const BUILTINS = /\b(pinMode|digitalWrite|digitalRead|analogWrite|analogRead|delay|delayMicroseconds|millis|micros|pulseIn|Serial|ledcAttach|ledcWrite|map|constrain|WiFi|setup|loop|tone|noTone|attach|write|HIGH|LOW|OUTPUT|INPUT_PULLUP|INPUT)\b/g;
 export function highlightC(line) {
   const esc = line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const cut = esc.indexOf("//");

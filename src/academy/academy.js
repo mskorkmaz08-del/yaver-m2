@@ -3,14 +3,18 @@
 // it is opened from Yaver's home screen. Hands (through the webcam) or the
 // mouse drive everything: pinch to press buttons and grab parts, move to
 // turn the view, both hands to zoom, and an open-hand swipe to change step.
-import { Stage } from "./stage.js?v=18";
-import { stepTweens } from "./anim.js?v=18";
-import { LessonContext } from "./course.js?v=18";
-import { ELECTRONICS } from "./lessons-electronics.js?v=18";
-import { ARDUINO } from "./lessons-arduino.js?v=18";
-import { ESP32 } from "./lessons-esp32.js?v=18";
-import { Simulator, buildRobot } from "./sim.js?v=18";
-import { HandInput } from "../handinput.js?v=18";
+import { Stage } from "./stage.js?v=19";
+import { stepTweens } from "./anim.js?v=19";
+import { LessonContext } from "./course.js?v=19";
+import { ELECTRONICS } from "./lessons-electronics.js?v=19";
+import { ARDUINO } from "./lessons-arduino.js?v=19";
+import { ESP32 } from "./lessons-esp32.js?v=19";
+import { Simulator, buildRobot } from "./sim.js?v=19";
+import { HandInput } from "../handinput.js?v=19";
+import { projectLesson } from "./project.js?v=19";
+import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=19";
+import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=19";
+import { PIANO } from "./project-examples.js?v=19";
 
 const VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 export const MODULES = [ELECTRONICS, ARDUINO, ESP32];
@@ -57,7 +61,8 @@ let ctx = null;      // the running lesson's context
 let lesson = null;
 let state = null;
 let stepIndex = 0;
-let view = "menu";   // "menu" | "lesson" | "sim"
+let view = "menu";   // "menu" | "lesson" | "sim" (a project plays as a lesson)
+let planning = null; // { request, status, error, needKey } while the project tutor works
 let showcase = null; // the robot turning on the menu
 let active = false;
 let onHome = () => {};
@@ -73,9 +78,47 @@ function markDone(id) {
 
 // ---- Menu ---------------------------------------------------------------------------
 
+const EXAMPLES = ["A piano from an Arduino", "A night light that turns on in the dark", "A parking sensor that beeps faster as you get close", "A traffic light with a crossing button", "A servo that follows a knob"];
+
+function projectBlock() {
+  const saved = savedProjects();
+  const p = planning;
+  const busy = p && !p.error && !p.needKey;
+  return `
+    <div class="pj-make">
+      <h1>Make your own project</h1>
+      <p class="ac-lead">Say or type what you want to build. Yaver's AI designs it: the parts, where every wire goes, and the code, explained step by step in 3D. Then run it in the simulator.</p>
+      <form class="pj-form">
+        <textarea name="what" rows="2" placeholder="I want to make a piano from an Arduino…" aria-label="What do you want to build?" ${busy ? "disabled" : ""}>${esc(p?.request ?? "")}</textarea>
+        <button class="ac-btn primary" type="submit" ${busy ? "disabled" : ""}>${busy ? "Designing…" : "Design it ▶"}</button>
+      </form>
+      ${busy ? `<p class="pj-status"><i class="pj-spin"></i>${esc(p.status || "Thinking…")} <small>(about half a minute)</small></p>` : ""}
+      ${p?.error ? `<p class="pj-status pj-err">${esc(p.error)}</p>` : ""}
+      ${p?.needKey ? keyForm() : ""}
+      <div class="pj-chips">${EXAMPLES.map((e) => `<button type="button" class="pj-chip" data-example="${esc(e)}">${esc(e)}</button>`).join("")}</div>
+      <div class="ac-cards pj-saved">
+        <button class="ac-card" data-project="example"><b class="ac-num">🎹</b><span><strong>${esc(PIANO.title)}</strong><small>A ready-made example: try it now, no key needed.</small></span></button>
+        ${saved.map((pl, i) => `<div class="pj-saved-row"><button class="ac-card" data-project="${i}"><b class="ac-num">🛠</b><span><strong>${esc(pl.title)}</strong><small>${esc(pl.request || pl.summary || "")}</small></span></button><button class="ac-x pj-del" data-del="${i}" title="Delete" aria-label="Delete ${esc(pl.title)}">×</button></div>`).join("")}
+      </div>
+    </div>`;
+}
+
+function keyForm() {
+  return `
+    <form class="pj-key">
+      <p><b>One-time setup.</b> Yaver designs projects with Google's free Gemini AI, the same key its voice uses. Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>, paste it here, and it stays in this browser.</p>
+      <div class="pj-key-row"><input type="password" name="gemini" placeholder="Paste the Gemini key (AIza…)" autocomplete="off"><button class="ac-btn primary" type="submit">Save</button></div>
+      <details><summary>Or use Claude instead</summary>
+        <p>Claude (Anthropic) also works, with a paid API key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Each project costs a few cents.</p>
+        <div class="pj-key-row"><input type="password" name="claude" placeholder="Paste the Claude key (sk-ant-…)" autocomplete="off"><button class="ac-btn" type="submit">Save</button></div>
+      </details>
+    </form>`;
+}
+
 function renderMenu() {
   let n = 0;
   ui.menu.innerHTML = `
+    ${projectBlock()}
     <h1>Robotics course</h1>
     <p class="ac-lead">From your first LED to a robot that finds its own way: ${LESSONS.length} short 3D lessons, then build, wire and program your own robot in the simulator.</p>
     ${MODULES.map((m, mi) => `
@@ -94,11 +137,72 @@ function renderMenu() {
 }
 
 ui.menu.addEventListener("click", (e) => {
-  const card = e.target.closest("[data-lesson], [data-sim]");
+  const chip = e.target.closest("[data-example]");
+  if (chip) { plan(chip.dataset.example); return; }
+  const del = e.target.closest("[data-del]");
+  if (del) { deleteProject(Number(del.dataset.del)); renderMenu(); return; }
+  const card = e.target.closest("[data-lesson], [data-sim], [data-project]");
   if (!card) return;
   if (card.dataset.sim) go("sim");
+  else if (card.dataset.project) go(`project/${card.dataset.project}`);
   else go(card.dataset.lesson);
 });
+
+ui.menu.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  if (form.classList.contains("pj-form")) {
+    plan(form.querySelector("textarea").value);
+  } else if (form.classList.contains("pj-key")) {
+    const gemini = form.querySelector("[name=gemini]").value.trim();
+    const claude = form.querySelector("[name=claude]").value.trim();
+    try {
+      if (claude) saveClaudeKey(claude);
+      else await saveGeminiKey(gemini);
+      const request = planning?.request;
+      planning = null;
+      if (request) plan(request); else renderMenu();
+    } catch (err) {
+      planning = { ...planning, error: err.message };
+      renderMenu();
+    }
+  }
+});
+ui.menu.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && e.target.matches(".pj-form textarea")) { e.preventDefault(); e.target.form.requestSubmit(); }
+});
+
+const esc = (t) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// ---- The project tutor ---------------------------------------------------------------
+
+// Designs a project from his words and opens it. `previous` is a plan to change.
+export async function plan(request, previous = null) {
+  request = String(request ?? "").trim();
+  if (!request || (planning && !planning.error && !planning.needKey)) return;
+  planning = { request, status: "Thinking…" };
+  if (view !== "menu") go("menu");
+  else renderMenu();
+  ui.menu.scrollTop = 0;
+  try {
+    const result = await planProject(request, {
+      previous,
+      onStatus: (t) => { planning.status = t; if (view === "menu") renderMenu(); },
+    });
+    planning = null;
+    saveProject(result);
+    go("project/0");
+  } catch (err) {
+    console.warn("Project planning failed", err);
+    planning = err.needKey ? { request, needKey: true } : { request, error: `${err.message} ` };
+    if (view === "menu") renderMenu();
+  }
+}
+
+function projectPlan(sub) {
+  if (sub === "example") return { ...checkPlan(PIANO), request: "A piano from an Arduino" };
+  return savedProjects()[Number(sub)] ?? null;
+}
 
 // ---- Views ------------------------------------------------------------------------
 
@@ -119,8 +223,10 @@ export function go(where, { push = true } = {}) {
   const hash = where === "menu" ? "#academy" : `#academy/${where}`;
   if (push && location.hash !== hash) history.pushState(null, "", hash);
   teardown();
+  const project = where.startsWith("project/") ? projectPlan(where.slice(8)) : null;
   if (where === "sim") openSim();
-  else if (LESSONS.some((l) => l.id === where)) openLesson(where);
+  else if (project) openLesson(projectLesson(project, { change: (text) => plan(text, project) }));
+  else if (LESSONS.some((l) => l.id === where)) openLesson(LESSONS.find((l) => l.id === where));
   else openMenu();
 }
 
@@ -141,15 +247,15 @@ function openSim() {
   sim.open();
 }
 
-function openLesson(id) {
+function openLesson(l) {
   view = "lesson";
-  lesson = LESSONS.find((l) => l.id === id);
+  lesson = l;
   ctx = new LessonContext(stage, ui);
   state = lesson.setup(ctx);
   ui.lesson.hidden = false;
   $(".ac-lesson-title").textContent = lesson.title;
-  $(".ac-lesson-module").textContent = `Module ${lesson.moduleIndex + 1} · ${lesson.module.title}`;
-  ui.crumbs.innerHTML = `<button class="ac-link" data-act="menu">Course</button> › ${lesson.title}`;
+  $(".ac-lesson-module").textContent = lesson.custom ? "Project tutor" : `Module ${lesson.moduleIndex + 1} · ${lesson.module.title}`;
+  ui.crumbs.innerHTML = `<button class="ac-link" data-act="menu">${lesson.custom ? "Projects" : "Course"}</button> › ${esc(lesson.title)}`;
   $(".ac-dots").innerHTML = lesson.steps.map((s, i) => `<button class="ac-dot" data-step="${i}" title="${s.title}"></button>`).join("");
   goStep(0);
 }
@@ -168,15 +274,16 @@ function goStep(i) {
   $("[data-act=prev]").disabled = stepIndex === 0;
   const last = stepIndex === lesson.steps.length - 1;
   const nextLesson = LESSONS[LESSONS.indexOf(lesson) + 1];
-  $("[data-act=next]").innerHTML = last ? (nextLesson ? "Next lesson ▶" : "To the simulator ▶") : "Next ▶";
+  $("[data-act=next]").innerHTML = last ? (lesson.custom ? "All projects ▶" : nextLesson ? "Next lesson ▶" : "To the simulator ▶") : "Next ▶";
   if (step.camera) stage.flyTo(step.camera);
   step.enter(ctx, state);
-  if (last) markDone(lesson.id);
+  if (last && !lesson.custom) markDone(lesson.id);
 }
 
 function next() {
   if (view !== "lesson") return;
   if (stepIndex < lesson.steps.length - 1) return goStep(stepIndex + 1);
+  if (lesson.custom) return go("menu");
   const nextLesson = LESSONS[LESSONS.indexOf(lesson) + 1];
   go(nextLesson ? nextLesson.id : "sim");
 }
@@ -368,9 +475,11 @@ export function command(raw) {
 
 // One line describing where he is, for the language model.
 export function describe() {
+  if (view === "lesson" && lesson.custom) return lesson.describe(stepIndex);
   if (view === "lesson") return `He is in the Robotics Academy, lesson "${lesson.title}", step ${stepIndex + 1} of ${lesson.steps.length}: "${lesson.steps[stepIndex].title}".`;
   if (view === "sim") return `He is in the Robotics Academy's robot simulator, on the ${sim.mode} tab.`;
-  return "He is on the Robotics Academy's course map.";
+  if (planning && !planning.error) return `He is in the Robotics Academy; the project tutor is designing "${planning.request}" for him (it takes about half a minute).`;
+  return "He is on the Robotics Academy's course map, where he can also describe a project for the AI tutor to design.";
 }
 
 export function route(sub) { go(sub || "menu", { push: false }); }
