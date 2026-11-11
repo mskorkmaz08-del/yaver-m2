@@ -3,9 +3,18 @@
 // picking. Units are centimetres, so parts are modelled at their real size.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { tween, ease } from "./anim.js?v=21";
+import { tween, ease } from "./anim.js?v=22";
 
 const tmp = new THREE.Vector3();
+
+// Picture quality, best first: pixels drawn per screen point, and how often
+// shadows are redrawn (every nth frame; 0 turns them off).
+const QUALITY = [
+  { ratio: 1.5, shadowEvery: 2 },
+  { ratio: 1.2, shadowEvery: 2 },
+  { ratio: 1, shadowEvery: 3 },
+  { ratio: 0.8, shadowEvery: 0 },
+];
 
 // True if the object and everything it sits in are visible.
 function shown(obj) {
@@ -19,9 +28,12 @@ export class Stage {
     // 1.5 pixels per point at most: full Retina resolution is more than
     // twice the work for a difference you can barely see.
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    this.quality = 0;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, QUALITY[0].ratio));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Shadows are redrawn every other frame (see render()), not every frame.
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     container.appendChild(this.renderer.domElement);
@@ -42,6 +54,7 @@ export class Stage {
     const key = new THREE.DirectionalLight("#ffffff", 2.2);
     key.position.set(30, 60, 40);
     key.castShadow = true;
+    this.key = key;
     key.shadow.mapSize.set(2048, 2048);
     Object.assign(key.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 200 });
     key.shadow.bias = -0.0004;
@@ -106,6 +119,10 @@ export class Stage {
       z + radius * Math.sin(phi) * Math.cos(theta),
     );
     this.camera.lookAt(x, y, z);
+    // The nearest thing drawn moves out with the camera: depth is far more
+    // exact that way, so surfaces that almost touch don't flicker.
+    const near = THREE.MathUtils.clamp(radius * 0.04, 0.1, 4);
+    if (Math.abs(near - this.camera.near) > near * 0.1) { this.camera.near = near; this.camera.updateProjectionMatrix(); }
   }
 
   // Glides to a pose: { target: [x, y, z], theta, phi, radius }. Any field
@@ -180,10 +197,53 @@ export class Stage {
     }
     this.applyPose();
     this.labels.update();
+    const q = QUALITY[this.quality];
+    this.frame = (this.frame ?? 0) + 1;
+    if (q.shadowEvery && this.frame % q.shadowEvery === 0) this.renderer.shadowMap.needsUpdate = true;
     this.renderer.render(this.scene, this.camera);
+    this.adapt();
+  }
+
+  // Watches how long frames take. If this computer can't keep up, the picture
+  // gets a little softer (fewer pixels, then simpler shadows) until it can.
+  // If two steps in a row don't help, the limit isn't the drawing: they are
+  // undone and the picture is left alone.
+  adapt() {
+    const now = performance.now();
+    const gap = now - (this.lastRender ?? now);
+    this.lastRender = now;
+    if (gap <= 0 || gap > 250 || this.adaptDone) { this.gaps = []; return; } // a pause, not a slow frame
+    (this.gaps ??= []).push(gap);
+    if (this.gaps.length < 90) return;
+    const avg = this.gaps.reduce((x, y) => x + y, 0) / this.gaps.length;
+    this.gaps = [];
+    const t = this.trial;
+    if (t) {
+      if (avg < t.avg * 0.9) this.trial = null; // it helped: keep it
+      else if (++t.steps >= 2 || this.quality === QUALITY.length - 1) { this.setQuality(t.from); this.adaptDone = true; return; }
+    }
+    if (avg <= 22) { this.trial = null; return; }
+    // Next level down that changes anything on this screen.
+    const dpr = window.devicePixelRatio;
+    const same = (a, b) => Math.min(dpr, a.ratio) === Math.min(dpr, b.ratio) && a.shadowEvery === b.shadowEvery;
+    let next = this.quality + 1;
+    while (next < QUALITY.length - 1 && same(QUALITY[next], QUALITY[this.quality])) next++;
+    if (next >= QUALITY.length) { this.adaptDone = true; return; }
+    this.trial ??= { from: this.quality, avg, steps: 0 };
+    this.setQuality(next);
+  }
+
+  setQuality(level) {
+    this.quality = level;
+    const q = QUALITY[level];
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, q.ratio));
+    this.renderer.setSize(this.width || window.innerWidth, this.height || window.innerHeight);
+    this.key.castShadow = Boolean(q.shadowEvery);
+    this.renderer.shadowMap.needsUpdate = true;
   }
 
   clear() {
+    this.renderer.shadowMap.needsUpdate = true;
     this.labels.clear();
     for (const child of [...this.root.children]) {
       this.root.remove(child);
@@ -256,6 +316,7 @@ class Labels {
     this.canvas.width = w * r;
     this.canvas.height = h * r;
     this.ctx.setTransform(r, 0, 0, r, 0, 0);
+    this.drawnKey = null;
   }
 
   // `anchor` is an Object3D (its origin, plus `offset` in its own space) or a
@@ -265,12 +326,12 @@ class Labels {
     el.className = `ac-label ${cls}`;
     el.innerHTML = html;
     this.el.appendChild(el);
-    const item = { anchor, offset, el, dx, dy, shown: 0 };
+    const item = { anchor, offset, el, dx, dy, shown: 0, size: null };
     this.items.add(item);
     requestAnimationFrame(() => el.classList.add("in"));
     return {
       el,
-      set: (h) => { el.innerHTML = h; },
+      set: (h) => { el.innerHTML = h; item.size = null; },
       remove: () => this.remove(item),
     };
   }
@@ -287,12 +348,11 @@ class Labels {
 
   update() {
     const { ctx } = this;
-    ctx.clearRect(0, 0, this.stage.width, this.stage.height);
-    const world = new THREE.Vector3();
-    // Measure every label before moving any: interleaving the two makes the
-    // browser lay out the page again for each label, every frame.
-    const sizes = new Map();
-    for (const item of this.items) sizes.set(item, [item.el.offsetWidth, item.el.offsetHeight]);
+    const world = this.world ??= new THREE.Vector3();
+    // Measuring makes the browser lay out the page, so a label is measured
+    // once (and again if its text changes), all of them before any moves.
+    for (const item of this.items) if (!item.size || !item.size[0]) item.size = [item.el.offsetWidth, item.el.offsetHeight];
+    const lines = [];
     for (const item of this.items) {
       if (item.anchor.isObject3D) {
         world.copy(item.offset ?? new THREE.Vector3());
@@ -305,19 +365,28 @@ class Labels {
       if (!visible) continue;
       const lx = p.x + item.dx;
       const ly = p.y + item.dy;
-      const [w, h] = sizes.get(item);
+      const [w, h] = item.size;
       const left = item.dx >= 0 ? lx : lx - w;
       const transform = `translate(${left}px, ${ly - h / 2}px)`;
       if (item.el.style.transform !== transform) item.el.style.transform = transform;
-      ctx.strokeStyle = "rgba(124, 214, 255, 0.75)";
-      ctx.fillStyle = "#9fe3ff";
-      ctx.lineWidth = 1.2;
+      lines.push(Math.round(p.x * 2), Math.round(p.y * 2), Math.round(lx * 2), Math.round(ly * 2));
+    }
+    // The leader lines are redrawn only when one moved.
+    const key = lines.join();
+    if (key === this.drawnKey) return;
+    this.drawnKey = key;
+    ctx.clearRect(0, 0, this.stage.width, this.stage.height);
+    ctx.strokeStyle = "rgba(124, 214, 255, 0.75)";
+    ctx.fillStyle = "#9fe3ff";
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < lines.length; i += 4) {
+      const [px, py, lx, ly] = [lines[i] / 2, lines[i + 1] / 2, lines[i + 2] / 2, lines[i + 3] / 2];
       ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
+      ctx.moveTo(px, py);
       ctx.lineTo(lx, ly);
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 2.6, 0, Math.PI * 2);
+      ctx.arc(px, py, 2.6, 0, Math.PI * 2);
       ctx.fill();
     }
   }

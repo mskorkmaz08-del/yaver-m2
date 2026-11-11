@@ -4,11 +4,11 @@
 // the code line by line, and then runs the sketch against the circuit as
 // wired: buttons can be pressed, the buzzer plays, LEDs light, servos turn.
 import * as THREE from "three";
-import { arduinoUno, esp32, pinWorld, jumperWire, WIRE_COLORS } from "./parts.js?v=21";
-import { buildPart } from "./project-parts.js?v=21";
-import { SketchRunner } from "./sketch.js?v=21";
-import { KIT_SHOP, KEYPAD_KEYS } from "./kit-parts.js?v=21";
-import { kitLibs, IR_KEYS, CARDS } from "./kit-sim.js?v=21";
+import { arduinoUno, esp32, pinWorld, jumperWire, WIRE_COLORS } from "./parts.js?v=22";
+import { buildPart } from "./project-parts.js?v=22";
+import { SketchRunner } from "./sketch.js?v=22";
+import { KIT_SHOP, KEYPAD_KEYS } from "./kit-parts.js?v=22";
+import { kitLibs, IR_KEYS, CARDS } from "./kit-sim.js?v=22";
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

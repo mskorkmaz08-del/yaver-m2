@@ -3,9 +3,9 @@
 // shows in 3D. It asks Google Gemini with the free key Yaver already has, or
 // Claude when an Anthropic API key has been added. Both keys stay in this
 // browser and go only to Google or Anthropic.
-import { geminiSettings } from "../assistant/keys.js?v=21";
-import { pickChatModel } from "../assistant/gemini.js?v=21";
-import { KINDS } from "./project-parts.js?v=21";
+import { geminiSettings } from "../assistant/keys.js?v=22";
+import { pickChatModel } from "../assistant/gemini.js?v=22";
+import { KINDS } from "./project-parts.js?v=22";
 
 const CLAUDE_STORE = "yaver-claude-key";
 const CLAUDE_MODEL = "claude-opus-5-5";

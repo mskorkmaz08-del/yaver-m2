@@ -5,6 +5,7 @@
 // shown when you point at them.
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 const PITCH = 0.254; // 0.1 inch, the spacing of header pins and breadboard holes
 
@@ -831,20 +832,21 @@ export function wheel() {
   const outer = cyl(3.25, 3.25, 2.6, MAT.rubber, tyreInfo, 48);
   outer.rotation.z = Math.PI / 2;
   tyre.add(outer);
-  // Tread blocks around the outside.
+  // Tread blocks around the outside, drawn as one piece.
+  const blocks = [];
   for (let i = 0; i < 36; i++) {
     const a = (i / 36) * Math.PI * 2;
-    const tread = box(2.4, 0.18, 0.3, MAT.rubber);
-    tread.position.set(0, Math.cos(a) * 3.28, Math.sin(a) * 3.28);
-    tread.rotation.x = -a;
-    tyre.add(tread);
+    blocks.push(new THREE.BoxGeometry(2.4, 0.18, 0.3).rotateX(-a).translate(0, Math.cos(a) * 3.28, Math.sin(a) * 3.28));
   }
+  tyre.add(mesh(mergeGeometries(blocks), MAT.rubber, tyreInfo));
+  for (const g of blocks) g.dispose();
   part.add(tyre);
   const rimInfo = { title: "Rim", text: "Holds the tyre and grips the motor shaft." };
   for (const sx of [-1, 1]) {
+    // Stands 0.3 mm proud of the tyre's side: level with it, the two flicker.
     const rim = cyl(2.35, 2.35, 0.2, MAT.yellowPlastic, rimInfo, 40);
     rim.rotation.z = Math.PI / 2;
-    at(rim, sx * 1.2, 0, 0);
+    at(rim, sx * 1.23, 0, 0);
     part.add(rim);
   }
   for (let i = 0; i < 6; i++) {
