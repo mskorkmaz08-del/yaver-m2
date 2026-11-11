@@ -4,7 +4,7 @@
 // thing once, then repeat it in a loop, then make it react to something. Every
 // program runs in the simulator against the circuit as wired, and can be
 // copied into the Arduino IDE for the real board.
-import { KINDS } from "./project-parts.js?v=20";
+import { KINDS } from "./project-parts.js?v=21";
 
 const BOARD_PINS = new Set(["5V", "3V3", "GND", "VIN", ...Array.from({ length: 14 }, (_, i) => `D${i}`), ...Array.from({ length: 6 }, (_, i) => `A${i}`)]);
 

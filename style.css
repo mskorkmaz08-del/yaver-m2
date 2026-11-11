@@ -445,3 +445,19 @@ body[data-view="home"] .yaver-form input { padding: 11px 16px; font-size: 15px; 
 .yaver-key-actions button[type="button"] { background: none; border-color: rgba(255, 255, 255, 0.2); }
 .yaver-key-error { margin: 8px 0 0 !important; min-height: 1em; }
 #yaver-key-link { color: #4cc9ff; }
+
+/* The Voice and Hand camera switches. */
+.yaver-switches { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
+body[data-view="home"] .yaver-switches { justify-content: center; }
+.yaver-switch {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px;
+  background: var(--panel); border: 1px solid rgba(6, 214, 160, 0.55); color: var(--text);
+  font: inherit; font-size: 11px; cursor: pointer; backdrop-filter: blur(6px);
+}
+.yaver-switch svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.yaver-switch b { color: #06d6a0; font-weight: 600; }
+.yaver-switch[aria-pressed="false"] { border-color: var(--line); color: var(--muted); }
+.yaver-switch[aria-pressed="false"] b { color: #ff8a8a; }
+.yaver-switch:hover { border-color: #fff; }
+.yaver[data-voice="off"] .yaver-orb { opacity: 0.4; filter: grayscale(1); }
+.yaver[data-voice="off"] .yaver-orb .ring { animation: none; }

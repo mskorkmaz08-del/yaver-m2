@@ -1,11 +1,12 @@
 // Yaver, the talking assistant. With a Gemini key: a real-time voice
 // conversation through Gemini Live (live.js). Without one: wake word or button
 // → speech to text → studio command or language model → spoken answer.
-import { Brain } from "./brain.js?v=20";
-import { Listener, Speaker } from "./voice.js?v=20";
-import { parseCommand, navCommand, describeScene, projectRequest } from "./commands.js?v=20";
-import { geminiSettings, saveKey, forgetKey } from "./keys.js?v=20";
-import { LiveSession } from "./live.js?v=20";
+import { Brain } from "./brain.js?v=21";
+import { Listener, Speaker } from "./voice.js?v=21";
+import { parseCommand, navCommand, describeScene, projectRequest } from "./commands.js?v=21";
+import { geminiSettings, saveKey, forgetKey } from "./keys.js?v=21";
+import { LiveSession } from "./live.js?v=21";
+import { isOn, setOn, onSwitch, switchButton } from "../switches.js?v=21";
 
 const HISTORY_KEY = "yaver-chat";
 const HISTORY_TURNS = 12; // messages kept for context (the local model's window is small)
@@ -75,6 +76,8 @@ export function startAssistant(app) {
   const speaker = new Speaker();
   let history = loadHistory();
   const hello = greeting();
+  let voiceOn = isOn("voice"); // the Voice switch: off means no listening and no speaking
+  speaker.muted = !voiceOn;
   let busy = false;
   let turn = 0; // each request gets a number; a newer one replaces an older one
 
@@ -122,7 +125,7 @@ export function startAssistant(app) {
   let wantText = false;
   try { wantText = localStorage.getItem("yaver-show-text") === "1"; } catch {}
   function showTextMode() {
-    el.root.dataset.text = wantText || !speaker.natural ? "on" : "off";
+    el.root.dataset.text = wantText || !speaker.natural || !voiceOn ? "on" : "off";
     el.textToggle.textContent = wantText ? "Hide text" : "Show text";
   }
   el.textToggle.addEventListener("click", () => {
@@ -279,7 +282,7 @@ export function startAssistant(app) {
   let livePausedUntil = 0;
   let live = null;      // the current LiveSession
   let liveLines = { you: null, yaver: null };
-  const liveOn = () => Boolean(liveKey) && Date.now() > livePausedUntil;
+  const liveOn = () => voiceOn && Boolean(liveKey) && Date.now() > livePausedUntil;
 
   function liveSystem() {
     const now = new Date().toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
@@ -450,7 +453,36 @@ export function startAssistant(app) {
   // Sound may only start after a click or key press.
   for (const type of ["pointerdown", "keydown"]) window.addEventListener(type, () => speaker.unlock(), { capture: true });
 
+  // The Voice switch. Off: the microphone is released and Yaver stays silent
+  // (typing still works, with written answers).
+  switchButton(document.getElementById("switch-voice"), "voice");
+  switchButton(document.getElementById("switch-hands"), "hands");
+  function showVoiceSwitch() {
+    el.root.dataset.voice = voiceOn ? "on" : "off";
+    el.input.placeholder = voiceOn ? 'Say "Yaver…", hold Space, or type' : "Voice is off: type here";
+    el.orb.title = voiceOn ? "Talk to Yaver (or hold Space)" : "Voice is off: click to turn it on";
+    showTextMode();
+  }
+  onSwitch("voice", (on) => {
+    voiceOn = on;
+    speaker.muted = !on;
+    if (on) {
+      listener.start();
+      listener.setMode("wake");
+      listener.pause(false);
+    } else {
+      live?.close("stopped");
+      speaker.stop();
+      listener.stop();
+      listener.setMode("wake");
+      setLook("idle");
+    }
+    showVoiceSwitch();
+  });
+  showVoiceSwitch();
+
   el.orb.addEventListener("click", () => {
+    if (!voiceOn) { setOn("voice", true); return; }
     if (live) { live.close("stopped"); return; } // ends the conversation
     if (speaker.speaking) { speaker.stop(); return; }
     if (liveOn()) talkLive();
@@ -467,7 +499,7 @@ export function startAssistant(app) {
   window.addEventListener("keydown", (e) => {
     if (e.code !== "Space" || e.repeat || e.target === el.input || e.target === el.keyInput || e.target.closest?.("input, textarea")) return;
     e.preventDefault();
-    if (live) return;
+    if (live || !voiceOn) return;
     if (liveOn()) talkLive();
     else listener.listenNow();
   });
@@ -477,7 +509,7 @@ export function startAssistant(app) {
   if (!listener.supported) {
     el.hint.textContent = "This browser can't listen. Use Chrome, or type below.";
   }
-  listener.start();
+  if (voiceOn) listener.start();
   brain.init();
 
   addLine("msg-yaver", hello);

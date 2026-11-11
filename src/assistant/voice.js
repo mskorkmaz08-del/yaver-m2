@@ -1,4 +1,4 @@
-import { synth as geminiSynth } from "./gemini.js?v=20";
+import { synth as geminiSynth } from "./gemini.js?v=21";
 
 // Listening and speaking, with no keys needed. Listening uses Chrome's speech
 // recognition (Chrome sends the audio to Google to turn it into text);
@@ -254,7 +254,7 @@ class NeuralSpeaker extends EventTarget {
   // voice is available.
   loadKokoro() {
     if (this.worker) return;
-    this.worker = new Worker(new URL("./tts-worker.js?v=20", import.meta.url), { type: "module" });
+    this.worker = new Worker(new URL("./tts-worker.js?v=21", import.meta.url), { type: "module" });
     this.worker.onmessage = ({ data }) => {
       if (data.type === "progress") this.dispatchEvent(new CustomEvent("progress", { detail: data.pct }));
       else if (data.type === "ready") { this.kokoroReady = true; this.dispatchEvent(new Event("ready")); }
@@ -429,6 +429,7 @@ export class Speaker extends EventTarget {
   loadKokoro() { this.neural?.loadKokoro(); }
 
   say(text) {
+    if (this.muted) return Promise.resolve(); // the voice switch is off
     if (this.natural) return this.neural.say(text, (t) => { this.retry = this.retry ? `${this.retry} ${t}` : t; });
     if (this.loading) return Promise.resolve(); // text only until the voice is ready
     return this.system.say(text).then(() => { if (this.system.blocked) this.retry = text; });

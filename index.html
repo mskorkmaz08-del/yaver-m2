@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Yaver Mark II</title>
-  <link rel="stylesheet" href="style.css?v=20" />
-  <link rel="stylesheet" href="academy.css?v=20" />
+  <link rel="stylesheet" href="style.css?v=21" />
+  <link rel="stylesheet" href="academy.css?v=21" />
   <!-- Installable as its own app (separate from the main Yaver app). -->
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#07090f" />
@@ -99,6 +99,16 @@
           <button type="button" class="yaver-link" id="yaver-connect" hidden title="Free, one click: makes Yaver much faster and smarter">Connect cloud brain</button>
           <button type="button" class="yaver-link" id="yaver-text-toggle">Show text</button>
         </div>
+        <div class="yaver-switches">
+          <button type="button" class="yaver-switch" id="switch-voice" aria-pressed="true" title="Turn Yaver's listening and voice on or off">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></svg>
+            <span>Voice</span><b>On</b>
+          </button>
+          <button type="button" class="yaver-switch" id="switch-hands" aria-pressed="true" title="Turn the hand-control camera on or off">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="13" height="10" rx="2" /><path d="M16 10.5 21 8v8l-5-2.5" /></svg>
+            <span>Hand camera</span><b>On</b>
+          </button>
+        </div>
       </div>
       <button class="yaver-orb" id="yaver-orb" title="Talk to Yaver (or hold Space)" aria-label="Talk to Yaver">
         <span class="ring r1"></span><span class="ring r2"></span><span class="core"></span>
@@ -126,6 +136,6 @@
       if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () {});
     })();
   </script>
-  <script type="module" src="src/app.js?v=20"></script>
+  <script type="module" src="src/app.js?v=21"></script>
 </body>
 </html>
