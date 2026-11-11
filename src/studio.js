@@ -1,13 +1,14 @@
 // The 3D Studio: loaded the first time you open it from Yaver's home screen.
 // The ?v= number defeats browser caching after an update (GitHub Pages lets
 // browsers keep files for 10 minutes). Bump it everywhere together.
-import { Editor, SHAPES, COLORS } from "./editor.js?v=20";
-import { sharedTracker } from "./hands.js?v=20";
-import { classify } from "./gestures.js?v=20";
-import { Hands3D } from "./hand3d.js?v=20";
-import { Shelf } from "./shelf.js?v=20";
-import { gestureIcon } from "./helpicons.js?v=20";
-import { OneEuro, Glide } from "./filters.js?v=20";
+import { Editor, SHAPES, COLORS } from "./editor.js?v=21";
+import { sharedTracker } from "./hands.js?v=21";
+import { classify } from "./gestures.js?v=21";
+import { Hands3D } from "./hand3d.js?v=21";
+import { Shelf } from "./shelf.js?v=21";
+import { gestureIcon } from "./helpicons.js?v=21";
+import { OneEuro, Glide } from "./filters.js?v=21";
+import { isOn, onSwitch } from "./switches.js?v=21";
 
 const STUDIO_VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 document.getElementById("version").textContent = `v${STUDIO_VERSION}`;
@@ -490,10 +491,14 @@ requestAnimationFrame(loop);
 // ---- Opening and closing ----------------------------------------------------
 
 function startCamera() {
+  if (!isOn("hands")) {
+    statusEl.textContent = "Hand camera off: using mouse and keyboard";
+    return Promise.resolve();
+  }
   statusEl.textContent = "Starting camera…";
   return tracker.start()
     .then(() => {
-      if (active) trackingReady = true;
+      if (active && isOn("hands")) trackingReady = true;
       else tracker.stop(); // went home while the camera was starting
     })
     .catch((err) => {
@@ -502,6 +507,18 @@ function startCamera() {
     });
 }
 startCamera();
+
+// The Hand camera switch.
+onSwitch("hands", (on) => {
+  if (!active) return;
+  if (on) startCamera();
+  else {
+    trackingReady = false;
+    tracker.stop();
+    hands.clear();
+    statusEl.textContent = "Hand camera off: using mouse and keyboard";
+  }
+});
 
 // Leaving for the home screen stops the camera and the drawing; coming back
 // turns them on again.

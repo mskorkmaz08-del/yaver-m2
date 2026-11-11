@@ -3,8 +3,8 @@
 // potentiometer, servo, light sensor and a labelled generic module) are
 // built here at real size in centimetres.
 import * as THREE from "three";
-import * as P from "./parts.js?v=20";
-import { KIT_KINDS, buildKitPart } from "./kit-parts.js?v=20";
+import * as P from "./parts.js?v=21";
+import { KIT_KINDS, buildKitPart } from "./kit-parts.js?v=21";
 
 const { makePart, addPin, MAT, PITCH } = P;
 const V = (x, y, z) => new THREE.Vector3(x, y, z);

@@ -3,19 +3,20 @@
 // it is opened from Yaver's home screen. Hands (through the webcam) or the
 // mouse drive everything: pinch to press buttons and grab parts, move to
 // turn the view, both hands to zoom, and an open-hand swipe to change step.
-import { Stage } from "./stage.js?v=20";
-import { stepTweens } from "./anim.js?v=20";
-import { LessonContext } from "./course.js?v=20";
-import { ELECTRONICS } from "./lessons-electronics.js?v=20";
-import { ARDUINO } from "./lessons-arduino.js?v=20";
-import { ESP32 } from "./lessons-esp32.js?v=20";
-import { Simulator, buildRobot } from "./sim.js?v=20";
-import { HandInput } from "../handinput.js?v=20";
-import { projectLesson } from "./project.js?v=20";
-import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=20";
-import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=20";
-import { PIANO } from "./project-examples.js?v=20";
-import { KIT, kitPlan } from "./kit.js?v=20";
+import { Stage } from "./stage.js?v=21";
+import { stepTweens } from "./anim.js?v=21";
+import { LessonContext } from "./course.js?v=21";
+import { ELECTRONICS } from "./lessons-electronics.js?v=21";
+import { ARDUINO } from "./lessons-arduino.js?v=21";
+import { ESP32 } from "./lessons-esp32.js?v=21";
+import { Simulator, buildRobot } from "./sim.js?v=21";
+import { HandInput } from "../handinput.js?v=21";
+import { projectLesson } from "./project.js?v=21";
+import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=21";
+import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=21";
+import { PIANO } from "./project-examples.js?v=21";
+import { KIT, kitPlan } from "./kit.js?v=21";
+import { isOn, onSwitch } from "../switches.js?v=21";
 
 const VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 export const MODULES = [ELECTRONICS, ARDUINO, ESP32];
@@ -471,8 +472,19 @@ export function resume() {
   if (active) return;
   active = true;
   stage.resize();
-  input.start();
+  startHands();
 }
+
+// The hand camera runs only while its switch is on.
+function startHands() {
+  if (isOn("hands")) input.start();
+  else ui.status.textContent = "Hand camera off: mouse and keyboard work";
+}
+onSwitch("hands", (on) => {
+  if (!active) return;
+  if (on) input.start();
+  else { input.stop(); startHands(); }
+});
 
 export function setHome(fn) { onHome = fn; }
 

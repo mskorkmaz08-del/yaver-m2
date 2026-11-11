@@ -3,7 +3,7 @@
 // DHT, Keypad, IRremote (IrReceiver), MFRC522 and Rtc by Makuna (DS1302).
 // Each checks that the part's pins really go to the pins the sketch names,
 // and misbehaves the way the real part would if they don't.
-import { KEYPAD_KEYS } from "./kit-parts.js?v=20";
+import { KEYPAD_KEYS } from "./kit-parts.js?v=21";
 
 // The kit's 21-key remote ("Car MP3"), NEC command codes.
 export const IR_KEYS = [
