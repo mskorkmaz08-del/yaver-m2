@@ -6,7 +6,7 @@
 // relay. Sizes are in centimetres. Each part has named pins (where wires go)
 // and setters the project player calls to light, turn or redraw it.
 import * as THREE from "three";
-import * as P from "./parts.js?v=21";
+import * as P from "./parts.js?v=22";
 
 const { makePart, addPin, MAT, PITCH } = P;
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
