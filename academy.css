@@ -269,3 +269,11 @@ i.band { border-radius: 2px; width: 8px; height: 14px; vertical-align: -3px; mar
 .pj-change { display: flex; gap: 8px; margin-top: 6px; }
 .pj-copy { border-radius: 999px; padding: 2px 10px; font-size: 11px; margin-top: -2px; }
 .pj-serial { margin: 0; padding: 0 14px; max-height: 140px; overflow-y: auto; font: 12px/1.45 ui-monospace, Menlo, monospace; color: #cfe8ff; white-space: pre-wrap; }
+
+/* ---- My kit -------------------------------------------------------------- */
+.kit-block { margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.kit-keypad { display: grid; grid-template-columns: repeat(4, 44px); gap: 6px; }
+.kit-keypad .ac-btn { border-radius: 8px; padding: 8px 0; font-weight: 700; }
+.kit-remote { display: grid; grid-template-columns: repeat(3, 58px); gap: 5px; padding: 10px; background: #15161a; border-radius: 16px; width: max-content; }
+.kit-remote .ac-btn { border-radius: 999px; padding: 6px 0; font-size: 12px; font-weight: 700; }
+.kit-remote-title { margin-top: 4px; }

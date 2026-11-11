@@ -23,6 +23,12 @@ Click **Robotics Academy** on the home screen, or say "open the course". Every l
 
 With the camera: pinch to press buttons, drag sliders and grab parts; pinch empty space and move to turn the view; pinch with both hands to zoom; sweep an open hand sideways to change step. The mouse and arrow keys work too. Voice: "next", "back", "lesson 5", "open the simulator", "upload".
 
+## My Arduino kit
+
+At the top of the Academy, **My Arduino kit** has a short lesson for every part of Mustafa's own kit (the "RFID UNO Kit" with a CH340 Uno), 25 in all: the board itself; the servo and the 28BYJ-48 stepper with its ULN2003 board; LEDs and resistors, the button, active and passive buzzers, the RGB module and the relay; the potentiometer, photoresistor, joystick, tilt switch, KY-037 sound sensor, water sensor, LM35 and DHT11; the 1-digit and 4-digit 7-segment displays, the 74HC595, the 8×8 matrix and the 1602 LCD; and the 4×4 keypad, IR remote, DS1302 clock and RC522 RFID reader (which ends in an RFID door lock).
+
+Each lesson wires the part up pin by pin in 3D, then runs two or three small programs that build on each other: do it **once**, repeat it in a **loop**, make it **react**. Every program runs in the simulator against the circuit as wired (the stepper turns step by step, displays multiplex, the LCD prints, the keypad, remote and RFID cards can be pressed or tapped, sensors have sliders) and copies straight into the Arduino IDE. The last step of each lesson covers uploading to the CH340 board on a Mac and any library to install. Lessons live in `src/academy/kit.js`, the new 3D parts in `kit-parts.js`, and the library stand-ins (Stepper, LiquidCrystal, DHT, Keypad, IRremote, MFRC522, Rtc by Makuna) in `kit-sim.js`. Links: `#academy/kit/<lesson>`, such as `#academy/kit/stepper`.
+
 ## Project tutor
 
 At the top of the Academy, **Make your own project**: type (or tell Yaver) what you want to build, such as "a piano from an Arduino". The AI designs it and the Academy shows it in 3D:
