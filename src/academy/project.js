@@ -4,9 +4,11 @@
 // the code line by line, and then runs the sketch against the circuit as
 // wired: buttons can be pressed, the buzzer plays, LEDs light, servos turn.
 import * as THREE from "three";
-import { arduinoUno, esp32, pinWorld, jumperWire, WIRE_COLORS } from "./parts.js?v=19";
-import { buildPart } from "./project-parts.js?v=19";
-import { SketchRunner } from "./sketch.js?v=19";
+import { arduinoUno, esp32, pinWorld, jumperWire, WIRE_COLORS } from "./parts.js?v=20";
+import { buildPart } from "./project-parts.js?v=20";
+import { SketchRunner } from "./sketch.js?v=20";
+import { KIT_SHOP, KEYPAD_KEYS } from "./kit-parts.js?v=20";
+import { kitLibs, IR_KEYS, CARDS } from "./kit-sim.js?v=20";
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -56,10 +58,20 @@ class Circuit {
     this.distance = 40;      // cm in front of an ultrasonic sensor
     this.serialLines = [];
     this.dirty = true;
+    // The kit's parts.
+    this.tilted = new Set();     // tilt switches tipped over
+    this.relayOn = new Set();    // relays pulled in
+    this.drivers = new Map();    // "U1.Q3" → 0/1: chip outputs driving a net
+    this.chips = new Map();      // 74HC595 id → { shift, latch, sh, st }
+    this.steppers = new Map();   // stepper id → { angle, phase, coils }
+    this.lastLit = new Map();    // display segment key → time it was last lit
+    this.clapUntil = 0;
+    for (const p of plan.parts) if (p.start !== undefined) this.knobs.set(p.id, p.start);
   }
 
   reset() {
     this.mode.clear(); this.out.clear(); this.tones.clear(); this.servos.clear();
+    this.drivers.clear(); this.chips.clear(); this.lastLit.clear();
     this.dirty = true;
   }
 
@@ -76,6 +88,10 @@ class Circuit {
       if (p.type === "button" && this.pressed.has(p.id)) join(`${p.id}.1`, `${p.id}.2`);
       if (p.type === "resistor" || p.type === "ldr") weak.push([`${p.id}.1`, `${p.id}.2`]);
       if (p.type === "potentiometer") weak.push([`${p.id}.1`, `${p.id}.W`], [`${p.id}.W`, `${p.id}.2`]);
+      if (p.type === "tilt" && !this.tilted.has(p.id)) join(`${p.id}.1`, `${p.id}.2`);
+      if (p.type === "relay") join(`${p.id}.COM`, `${p.id}.${this.relayOn.has(p.id) ? "NO" : "NC"}`);
+      if (p.type === "joystick" && this.pressed.has(p.id)) join(`${p.id}.SW`, `${p.id}.GND`);
+      if (p.type === "seg7") join(`${p.id}.COM`, `${p.id}.COM2`);
     }
     // Every node any wire or part mentions, grouped by net.
     for (const p of this.plan.parts) for (const pin of p.pins) find(`${p.id}.${pin}`);
@@ -101,6 +117,8 @@ class Circuit {
         const num = pinNumber(this.board, n.slice(6));
         if (num !== null && num !== except && this.mode.get(num) === "OUTPUT") drive = Math.max(drive ?? 0, this.out.get(num) ?? 0);
       }
+      const chip = this.drivers.get(n);
+      if (chip !== undefined) drive = Math.max(drive ?? 0, chip);
     }
     return high ? 1 : drive;
   }
@@ -135,12 +153,14 @@ class Circuit {
   hardware(onSerial) {
     const c = this;
     return {
-      pinMode(pin, mode) { c.mode.set(pin, mode); if (mode !== "OUTPUT") c.out.delete(pin); c.dirty = true; },
+      pinMode(pin, mode) { c.mode.set(pin, mode); if (mode !== "OUTPUT") c.out.delete(pin); },
       digitalWrite(pin, v) {
         if (c.mode.get(pin) !== "OUTPUT") { if (v) c.mode.set(pin, "INPUT_PULLUP"); return; }
-        c.out.set(pin, v); c.dirty = true;
+        if (c.out.get(pin) === v) return;
+        c.out.set(pin, v);
+        c.onWrite(pin);
       },
-      pwm(pin, duty) { c.mode.set(pin, "OUTPUT"); c.out.set(pin, duty); c.dirty = true; },
+      pwm(pin, duty) { c.mode.set(pin, "OUTPUT"); c.out.set(pin, duty); },
       digitalRead(pin) {
         const net = c.boardNet(pin);
         const sensor = c.sensorOn(net);
@@ -167,7 +187,80 @@ class Circuit {
       servo(pin, deg) { c.servos.set(pin, deg); },
       serial(text) { onSerial(text); },
       constants: () => CONSTANTS[c.board],
+      sample: () => c.sample(),
+      libs: c.libs,
     };
+  }
+
+  // ---- Chips and motors that react to every pin change -----------------------------
+
+  high(node) { return (this.softLevel(this.netOf(node)) ?? 0) > 0.5; }
+  powered(p, plus, minus) { return this.across(p, plus, minus) > 0.5; }
+
+  onWrite(pin) {
+    const net = this.boardNet(pin);
+    for (const p of this.plan.parts) {
+      if (p.type === "hc595") this.clock595(p, net);
+      else if (p.type === "stepper") this.stepStepper(p);
+    }
+  }
+
+  // A 74HC595: a rising edge on SHCP shifts DS in; on STCP copies it to Q0–Q7.
+  clock595(p, net) {
+    const st = this.chips.get(p.id) ?? { shift: 0, latch: 0, sh: false, st: false };
+    this.chips.set(p.id, st);
+    const sh = this.high(`${p.id}.SHCP`), lt = this.high(`${p.id}.STCP`);
+    const ok = this.powered(p, "VCC", "GND") && this.high(`${p.id}.MR`);
+    if (sh && !st.sh) st.shift = ok ? ((st.shift << 1) | (this.high(`${p.id}.DS`) ? 1 : 0)) & 0xff : 0;
+    if (lt && !st.st && ok) st.latch = st.shift;
+    st.sh = sh; st.st = lt;
+    const on = ok && !this.high(`${p.id}.OE`) && (this.softLevel(this.netOf(`${p.id}.OE`)) === 0);
+    for (let i = 0; i < 8; i++) this.drivers.set(`${p.id}.Q${i}`, on ? (st.latch >> i) & 1 : 0);
+  }
+
+  // The stepper turns toward whichever coils are on: two coils on at once
+  // pull the rotor between them; each change of a quarter turn of that
+  // "electrical" angle is one step (1/2048 of a turn at the shaft).
+  stepStepper(p) {
+    const st = this.steppers.get(p.id) ?? { angle: 0, phase: null, coils: [0, 0, 0, 0] };
+    this.steppers.set(p.id, st);
+    const powered = this.powered(p, "+", "-");
+    const coils = ["IN1", "IN2", "IN3", "IN4"].map((n) => (powered && this.high(`${p.id}.${n}`) ? 1 : 0));
+    st.coils = coils;
+    let x = 0, y = 0;
+    coils.forEach((on, i) => { if (on) { x += Math.cos((i * Math.PI) / 2); y += Math.sin((i * Math.PI) / 2); } });
+    if (Math.hypot(x, y) < 0.5) return;
+    const phase = Math.atan2(y, x);
+    if (st.phase !== null) {
+      let d = phase - st.phase;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      if (Math.abs(d) < 2.4) st.angle += (d / (Math.PI / 2)) * (360 / 2048);
+    }
+    st.phase = phase;
+  }
+
+  // Displays: remember which segments are lit right now, so a display that
+  // is lit one digit (or one row) at a time looks steady, as it does to an eye.
+  sample() {
+    const now = performance.now();
+    const mark = (key) => this.lastLit.set(key, now);
+    for (const p of this.plan.parts) {
+      if (p.type === "seg7") {
+        for (const s of ["a", "b", "c", "d", "e", "f", "g", "dp"]) if (this.across(p, s, "COM") > 0.5) mark(`${p.id}:${s}`);
+      } else if (p.type === "seg7x4") {
+        for (let k = 1; k <= 4; k++) for (const s of ["a", "b", "c", "d", "e", "f", "g", "dp"]) if (this.across(p, s, `D${k}`) > 0.5) mark(`${p.id}:${k}${s}`);
+      } else if (p.type === "matrix") {
+        const rows = [1, 2, 3, 4, 5, 6, 7, 8].map((r) => this.softLevel(this.netOf(`${p.id}.R${r}`)));
+        const cols = [1, 2, 3, 4, 5, 6, 7, 8].map((c) => this.softLevel(this.netOf(`${p.id}.C${c}`)));
+        rows.forEach((r, i) => { if (r === null || r < 0.5) return; cols.forEach((c, j) => { if (c !== null && c < 0.5) mark(`${p.id}:${i * 8 + j}`); }); });
+      }
+    }
+  }
+
+  litNow(prefix, keys, ms = this.persist ?? 130) {
+    const now = performance.now();
+    return new Set(keys.filter((k) => now - (this.lastLit.get(`${prefix}:${k}`) ?? -1e9) < ms));
   }
 
   // A sensor's reading if one drives this net: a potentiometer's wiper, a
@@ -180,6 +273,8 @@ class Circuit {
         return a + (b - a) * k;
       }
       if (p.type === "ldr" && (this.netOf(`${p.id}.1`) === net || this.netOf(`${p.id}.2`) === net) && this.level(net) === null) return this.knobs.get(p.id) ?? 0.5;
+      const kit = this.kitSensor(p, net);
+      if (kit !== null) return kit;
       if (p.type === "module") {
         for (const pin of p.pins) {
           if (/^(VCC|VIN|V\+|5V|3V3|3\.3V|GND|G)$/i.test(pin)) continue;
@@ -188,6 +283,36 @@ class Circuit {
       }
     }
     return null;
+  }
+
+  // The kit's sensors: what their output pin reads (0..1), or null.
+  kitSensor(p, net) {
+    const on = (pin) => this.netOf(`${p.id}.${pin}`) === net;
+    const knob = (k, d) => this.knobs.get(`${p.id}:${k}`) ?? d;
+    switch (p.type) {
+      case "joystick":
+        if (!this.powered(p, "+5V", "GND")) return null;
+        if (on("VRx")) return knob("x", 0.5);
+        if (on("VRy")) return knob("y", 0.5);
+        return null;
+      case "water":
+        return on("S") && this.powered(p, "+", "-") ? knob("level", 0) * 0.68 : null;
+      case "lm35":
+        return on("OUT") && this.powered(p, "VS", "GND") ? knob("temp", 22) / 500 : null;
+      case "sound": {
+        if (!this.powered(p, "+", "G")) return null;
+        // A clap lasts a quarter second, and at least until the sketch has
+        // read it a few times (so a slow computer can't miss it).
+        const clapping = performance.now() < this.clapUntil || this.clapReads > 0;
+        if (clapping && on("AO")) this.clapReads = Math.max(0, (this.clapReads ?? 0) - 1);
+        const clap = clapping ? 0.36 : 0;
+        const ao = Math.min(1, 0.5 + knob("noise", 0.1) * 0.1 + clap + (Math.random() - 0.5) * 0.01);
+        if (on("AO")) return ao;
+        if (on("DO")) return ao > 0.62 ? 1 : 0;
+        return null;
+      }
+      default: return null;
+    }
   }
 
   // Voltage across a two-pin part (a − b), or 0 if either end is floating.
@@ -203,7 +328,7 @@ class Circuit {
       const hz = this.tones.get(pin);
       if (hz) return hz;
     }
-    const active = /active/i.test(`${part.label} ${part.value}`);
+    const active = /\bactive/i.test(`${part.label} ${part.value}`);
     return active && this.across(part, "+", "-") > 0.5 ? 2300 : 0;
   }
 
@@ -326,7 +451,7 @@ const SHOP = {
   led: (p) => `${(p.value || "").toLowerCase().match(/red|yellow|green|blue|white/)?.[0] ?? "red"} LED (5 mm)`,
   resistor: (p) => `${p.value || "220"} Ω resistor`.replace(/\s*(ohms?|Ω)\s*Ω/i, " Ω"),
   button: () => "push button (6 mm)",
-  buzzer: (p) => (/active/i.test(`${p.label} ${p.value}`) ? "active buzzer" : "passive piezo buzzer"),
+  buzzer: (p) => (/\bactive/i.test(`${p.label} ${p.value}`) ? "active buzzer" : "passive piezo buzzer"),
   potentiometer: () => "10 kΩ potentiometer",
   servo: () => "SG90 micro servo",
   ultrasonic: () => "HC-SR04 ultrasonic sensor",
@@ -334,7 +459,8 @@ const SHOP = {
   dc_motor: () => "TT gear motor",
   battery_9v: () => "9 V battery and clip",
   ldr: () => "light sensor (LDR)",
-  breadboard: () => "half-size breadboard",
+  breadboard: () => "breadboard",
+  ...Object.fromEntries(Object.entries(KIT_SHOP).map(([k, v]) => [k, () => v])),
 };
 
 // ---- The lesson ------------------------------------------------------------------------
@@ -377,6 +503,16 @@ export function projectLesson(plan, hooks = {}) {
     steps.push({ title: s.title, text: md(s.text) + (list ? `<h4>Connect</h4><ul class="pj-wires">${list}</ul>` : ""), show: i + 1, plan: s });
   });
   codeSteps.forEach((s) => steps.push({ title: s.title, text: md(s.text), show: Infinity, plan: s, lines: s.code_lines }));
+  // A kit lesson's programs: each stage swaps in its own sketch.
+  (plan.stages ?? []).forEach((st, i) => steps.push({
+    title: st.title,
+    text: `${md(st.text)}<p class="tip">▶ <b>Run the code</b> to try it here${st.try ? `: ${esc(st.try)}` : "."}</p>`,
+    show: Infinity, lines: st.lines ?? [], code: st.code, stage: i,
+  }));
+  if (plan.kit) {
+    steps.push({ title: "Now on your real kit", text: plan.kit.footer, show: Infinity, code: plan.stages.at(-1).code, lines: [], last: true });
+    return lessonObject(plan, hooks, steps, partAt, wireAt);
+  }
   const realBoard = plan.board === "uno"
     ? "<li>Install the <b>Arduino IDE</b> from arduino.cc.</li><li>Plug the Uno in, pick <b>Tools → Board → Arduino Uno</b> and its <b>Port</b>.</li>"
     : "<li>Install the <b>Arduino IDE</b>, then add <b>esp32 by Espressif</b> in <b>Boards Manager</b>.</li><li>Plug the ESP32 in, pick <b>ESP32 Dev Module</b> and its <b>Port</b>.</li>";
@@ -390,12 +526,17 @@ export function projectLesson(plan, hooks = {}) {
     last: true,
   });
 
+  return lessonObject(plan, hooks, steps, partAt, wireAt);
+}
+
+function lessonObject(plan, hooks, steps, partAt, wireAt) {
   return {
-    id: "project",
+    id: plan.kit?.id ?? "project",
     title: plan.title,
     summary: plan.summary,
-    custom: true,
-    module: { title: "Your project" },
+    custom: !plan.kit,
+    kit: plan.kit ?? null,
+    module: { title: plan.kit ? "My kit" : "Your project" },
     moduleIndex: -1,
     setup(ctx) { return setup(ctx, plan, hooks); },
     steps: steps.map((st) => ({
@@ -403,14 +544,16 @@ export function projectLesson(plan, hooks = {}) {
       text: st.text,
       enter(ctx, s) { enterStep(ctx, s, st); },
     })),
-    describe(stepIndex) { return describePlan(plan, steps[stepIndex]); },
+    describe(stepIndex) { return describePlan({ ...plan, code: steps[stepIndex]?.code ?? plan.stages?.[0]?.code ?? plan.code }, steps[stepIndex]); },
     partAt, wireAt,
   };
 }
 
 function setup(ctx, plan, hooks) {
   const { board, objects, wires } = layout(ctx, plan);
-  const s = { plan, board, objects, wires, hooks, circuit: new Circuit(plan), sounds: new Sounds(), running: false, error: null };
+  const s = { plan, board, objects, wires, hooks, circuit: new Circuit(plan), sounds: new Sounds(), running: false, error: null, activeCode: plan.stages?.[0]?.code ?? plan.code, keyQueue: [], irQueue: [], cardPending: null };
+  s.circuit.libs = kitLibs(s);
+  s.circuit.onSerial = (line) => serial(ctx, s, line);
   const build = plan.steps.filter((st) => !st.code_lines.length);
   s.partAt = new Map([["BOARD", 0]]);
   s.wireAt = new Map();
@@ -419,14 +562,16 @@ function setup(ctx, plan, hooks) {
   for (const [id, obj] of objects) ctx.add(obj, { delay: id === "BOARD" ? 0 : 80 + 40 * k++ });
   for (const w of wires) ctx.add(w, { drop: false });
 
-  s.code = ctx.code(plan.code, { title: `${plan.title.replace(/[^\w]+/g, "_").replace(/^_|_$/g, "").slice(0, 32) || "project"}.ino` });
+  s.code = ctx.code(s.activeCode, { title: `${plan.title.replace(/[^\w]+/g, "_").replace(/^_|_$/g, "").slice(0, 32) || "project"}.ino` });
   addCopyButton(ctx);
   s.runner = new SketchRunner(s.circuit.hardware((line) => serial(ctx, s, line)));
 
   // Buttons: number keys press them while held.
   const buttons = plan.parts.filter((p) => p.type === "button");
+  const hasKeypad = plan.parts.some((p) => p.type === "keypad");
   const keyDown = (e) => {
     if (e.target.closest?.("input, textarea") || e.repeat) return;
+    if (hasKeypad && /^[0-9A-Da-d*#]$/.test(e.key)) { keypadPress(s, e.key.toUpperCase()); return; }
     const b = buttons[Number(e.key) - 1];
     if (b) press(s, b.id, true);
   };
@@ -454,17 +599,85 @@ function press(s, id, down) {
 function updateCircuit(s) {
   const c = s.circuit;
   c.dirty = true;
+  // Displays stay lit for a few frames after a segment was last on, so a
+  // slow computer doesn't make a multiplexed display flicker or vanish.
+  const now = performance.now();
+  c.persist = Math.max(130, (now - (s.lastFrame ?? now)) * 2.5);
+  s.lastFrame = now;
+  if (s.running) c.sample();
   for (const p of s.plan.parts) {
     const obj = s.objects.get(p.id);
     if (p.type === "led") obj.userData.setBrightness?.(s.running ? Math.max(0, Math.min(1, c.across(p, "A", "K"))) * 0.7 : 0);
     else if (p.type === "buzzer") { const hz = s.running ? c.buzzerHz(p) : 0; s.sounds.set(p.id, hz); obj.userData.setSound?.(hz > 0); }
     else if (p.type === "servo" && s.running) { const a = c.servoAngle(p); if (a !== null) obj.userData.setAngle(a); }
     else if (p.type === "potentiometer") obj.userData.setValue(c.knobs.get(p.id) ?? 0.5);
+    else updateKitPart(s, p, obj);
   }
   if (s.plan.board === "uno") {
     const led = s.board.userData.leds?.L;
     if (led) led.material.emissiveIntensity = s.running && c.mode.get(13) === "OUTPUT" && c.out.get(13) > 0.5 ? 2.5 : 0.1;
   }
+}
+
+// The kit's parts, every frame.
+function updateKitPart(s, p, obj) {
+  const c = s.circuit, run = s.running;
+  const across = (a, b) => (run ? Math.max(0, Math.min(1, c.across(p, a, b))) : 0);
+  switch (p.type) {
+    case "rgb": obj.userData.setRGB(across("R", "-"), across("G", "-"), across("B", "-")); break;
+    case "seg7": obj.userData.setLit(run ? c.litNow(p.id, ["a", "b", "c", "d", "e", "f", "g", "dp"]) : new Set()); break;
+    case "seg7x4": {
+      const segs = ["a", "b", "c", "d", "e", "f", "g", "dp"];
+      obj.userData.setLit([1, 2, 3, 4].map((k) => (run ? new Set([...c.litNow(p.id, segs.map((x) => `${k}${x}`))].map((x) => x.slice(1))) : new Set())));
+      break;
+    }
+    case "matrix": obj.userData.setLit(run ? new Set([...c.litNow(p.id, [...Array(64).keys()])].map(Number)) : new Set()); break;
+    case "stepper": {
+      if (run) c.stepStepper(p);
+      const st = c.steppers.get(p.id);
+      obj.userData.setAngle(st?.angle ?? 0);
+      obj.userData.setCoils(run && st ? st.coils : [0, 0, 0, 0]);
+      break;
+    }
+    case "relay": {
+      const on = run && c.powered(p, "+", "-") && c.high(`${p.id}.S`);
+      if (on !== c.relayOn.has(p.id)) {
+        if (on) c.relayOn.add(p.id); else c.relayOn.delete(p.id);
+        c.dirty = true;
+        s.sounds.click?.();
+      }
+      obj.userData.setOn(on);
+      break;
+    }
+    case "lcd": {
+      const lcd = s.lcd;
+      const powered = run && c.powered(p, "VDD", "VSS");
+      const v0net = c.netOf(`${p.id}.V0`);
+      const v0 = c.sensorOn(v0net) ?? c.softLevel(v0net) ?? 0.45;
+      const visible = !powered ? 0 : v0 <= 0.3 ? 1 : v0 >= 0.6 ? 0 : (0.6 - v0) / 0.3;
+      const rwOk = c.softLevel(c.netOf(`${p.id}.RW`)) === 0;
+      const good = lcd && lcd.ok && lcd.started && rwOk;
+      obj.userData.setScreen({
+        lines: good && lcd.shown ? lcd.lines.map((l) => l.slice(0, 16)) : ["", ""],
+        visible, backlight: run && c.across(p, "A", "K") > 0.5, blocks: powered && !good,
+      });
+      break;
+    }
+    case "joystick": obj.userData.setStick(c.knobs.get(`${p.id}:x`) ?? 0.5, c.knobs.get(`${p.id}:y`) ?? 0.5, c.pressed.has(p.id)); break;
+    case "tilt": obj.userData.setTilt(c.tilted.has(p.id)); break;
+    case "water": obj.userData.setLevel(c.knobs.get(`${p.id}:level`) ?? 0); break;
+    case "sound": obj.userData.setLed(run && c.powered(p, "+", "G") && (c.kitSensor(p, c.netOf(`${p.id}.DO`)) ?? 0) > 0.5); break;
+    case "keypad": obj.userData.setDown(performance.now() < (s.keyDownUntil ?? 0) ? s.keyDown : ""); break;
+    case "rfid": obj.userData.showCard(performance.now() < (s.cardUntil ?? 0) ? s.cardShown : null); break;
+    default: break;
+  }
+}
+
+function keypadPress(s, k) {
+  s.keyQueue.push(k);
+  if (s.keyQueue.length > 8) s.keyQueue.shift();
+  s.keyDown = k;
+  s.keyDownUntil = performance.now() + 220;
 }
 
 // ---- Steps -------------------------------------------------------------------------------
@@ -512,12 +725,24 @@ function enterStep(ctx, s, st) {
   } else {
     for (const [, obj] of s.objects) if (obj.visible) box.expandByObject(obj);
   }
-  if (!box.isEmpty()) {
+  // A kit lesson's programs look at the part that does something.
+  const star = st.code !== undefined && s.plan.kit?.focus ? s.objects.get(s.plan.kit.focus) : null;
+  if (star) {
+    box.makeEmpty().expandByObject(star);
+    const c = box.getCenter(V(0, 0, 0)), size = box.getSize(V(0, 0, 0));
+    ctx.camera({ target: [c.x, 0, c.z], theta: 0.12, phi: 0.7, radius: Math.min(Math.max(size.x, size.z) * 2.2 + 12, 40) });
+  } else if (!box.isEmpty()) {
     const c = box.getCenter(V(0, 0, 0)), size = box.getSize(V(0, 0, 0));
     const radius = Math.min(Math.max(Math.max(size.x, size.z) * 1.25 + 12, 16), 80);
     ctx.camera({ target: [c.x, 0, c.z], theta: 0.12, phi: st.lines ? 0.75 : 0.88, radius });
   }
 
+  if (st.code !== undefined && st.code !== s.activeCode) {
+    if (s.running) stopRun(s);
+    s.activeCode = st.code;
+    s.code.set(st.code);
+    serial(ctx, s, null);
+  }
   s.code.highlight(st.lines ?? []);
   runControls(ctx, s);
   if (st.last) changeBox(ctx, s);
@@ -551,13 +776,75 @@ function runControls(ctx, s) {
   if (s.plan.parts.some((p) => p.type === "ultrasonic")) {
     ctx.slider({ label: "Object in front", min: 2, max: 300, value: c.distance, format: (v) => `${v} cm`, onInput: (v) => { c.distance = v; } });
   }
+  kitControls(ctx, s);
+}
+
+// Sliders and buttons for the kit's parts: the stick, the remote, the keypad…
+function kitControls(ctx, s) {
+  const c = s.circuit;
+  const knob = (p, k, d) => c.knobs.get(`${p.id}:${k}`) ?? d;
+  const setKnob = (p, k, v) => { c.knobs.set(`${p.id}:${k}`, v); };
+  for (const p of s.plan.parts) {
+    switch (p.type) {
+      case "joystick":
+        ctx.slider({ label: "Stick left ↔ right", min: 0, max: 100, value: Math.round(knob(p, "x", 0.5) * 100), format: (v) => `${v}%`, onInput: (v) => setKnob(p, "x", v / 100) });
+        ctx.slider({ label: "Stick down ↕ up", min: 0, max: 100, value: Math.round(knob(p, "y", 0.5) * 100), format: (v) => `${v}%`, onInput: (v) => setKnob(p, "y", v / 100) });
+        ctx.buttons([{ label: "⬇ Press the stick", onClick: () => { press(s, p.id, true); setTimeout(() => press(s, p.id, false), 300); } }]);
+        break;
+      case "water":
+        ctx.slider({ label: "Water level", min: 0, max: 100, value: Math.round(knob(p, "level", 0) * 100), format: (v) => `${v}%`, onInput: (v) => setKnob(p, "level", v / 100) });
+        break;
+      case "lm35":
+        ctx.slider({ label: "Room temperature", min: 0, max: 60, value: knob(p, "temp", 22), format: (v) => `${v} °C`, onInput: (v) => setKnob(p, "temp", v) });
+        break;
+      case "dht11":
+        ctx.slider({ label: "Temperature", min: 0, max: 50, value: knob(p, "temp", 22), format: (v) => `${v} °C`, onInput: (v) => setKnob(p, "temp", v) });
+        ctx.slider({ label: "Humidity", min: 20, max: 90, value: knob(p, "hum", 45), format: (v) => `${v} %`, onInput: (v) => setKnob(p, "hum", v) });
+        break;
+      case "sound":
+        ctx.slider({ label: "Room noise", min: 0, max: 100, value: Math.round(knob(p, "noise", 0.1) * 100), format: (v) => `${v}%`, onInput: (v) => setKnob(p, "noise", v / 100) });
+        ctx.buttons([{ label: "👏 Clap", cls: "primary", onClick: () => { c.clapUntil = performance.now() + 250; c.clapReads = 1; } }]);
+        break;
+      case "tilt":
+        ctx.buttons([{ label: c.tilted.has(p.id) ? "⬆ Stand it up" : "↪ Tip it over", onClick: (el) => {
+          if (c.tilted.has(p.id)) c.tilted.delete(p.id); else c.tilted.add(p.id);
+          c.dirty = true;
+          el.innerHTML = c.tilted.has(p.id) ? "⬆ Stand it up" : "↪ Tip it over";
+        } }]);
+        break;
+      case "keypad": {
+        const grid = ctx.buttons(KEYPAD_KEYS.join("").split("").map((k) => ({ label: k, onClick: () => keypadPress(s, k) })));
+        grid.classList.add("kit-keypad");
+        break;
+      }
+      case "ir": {
+        const head = ctx.readout("<b>Remote control</b>: click a key, aimed at the receiver.");
+        head.el.classList.add("kit-remote-title");
+        const grid = ctx.buttons(IR_KEYS.map(([label, cmd]) => ({ label, onClick: () => { s.irQueue.push(cmd); if (s.irQueue.length > 4) s.irQueue.shift(); } })));
+        grid.classList.add("kit-remote");
+        break;
+      }
+      case "rfid":
+        ctx.buttons(Object.entries(CARDS).map(([k, card]) => ({
+          label: `${k === "tag" ? "🔵" : "⬜"} Tap the ${card.name}`,
+          onClick: () => { s.cardPending = k; s.cardShown = k; s.cardUntil = performance.now() + 1500; },
+        })));
+        break;
+      default: break;
+    }
+  }
+}
+
+function stopRun(s) {
+  s.runner.stop();
+  s.running = false;
+  s.sounds.stopAll();
+  s.circuit.serialLines = [];
 }
 
 function toggleRun(ctx, s, el) {
   if (s.running) {
-    s.runner.stop();
-    s.running = false;
-    s.sounds.stopAll();
+    stopRun(s);
     el.innerHTML = "▶ Run the code";
     el.classList.add("primary");
     s.status?.set("");
@@ -567,13 +854,16 @@ function toggleRun(ctx, s, el) {
   s.error = null;
   s.circuit.reset();
   s.circuit.serialLines = [];
+  s.keyQueue.length = 0;
+  s.irQueue.length = 0;
+  s.lcd = null;
   serial(ctx, s, null);
   s.running = true;
   el.innerHTML = "■ Stop";
   el.classList.remove("primary");
   s.status?.set("Running…");
   s.code.highlight([]);
-  s.runner.run(s.plan.code, (msg, line) => {
+  s.runner.run(s.activeCode, (msg, line) => {
     s.running = false;
     s.error = line ? `Line ${line}: ${msg}` : msg;
     s.status?.set(`<span class="pj-err">${esc(s.error)}</span>`);

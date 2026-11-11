@@ -3,18 +3,19 @@
 // it is opened from Yaver's home screen. Hands (through the webcam) or the
 // mouse drive everything: pinch to press buttons and grab parts, move to
 // turn the view, both hands to zoom, and an open-hand swipe to change step.
-import { Stage } from "./stage.js?v=19";
-import { stepTweens } from "./anim.js?v=19";
-import { LessonContext } from "./course.js?v=19";
-import { ELECTRONICS } from "./lessons-electronics.js?v=19";
-import { ARDUINO } from "./lessons-arduino.js?v=19";
-import { ESP32 } from "./lessons-esp32.js?v=19";
-import { Simulator, buildRobot } from "./sim.js?v=19";
-import { HandInput } from "../handinput.js?v=19";
-import { projectLesson } from "./project.js?v=19";
-import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=19";
-import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=19";
-import { PIANO } from "./project-examples.js?v=19";
+import { Stage } from "./stage.js?v=20";
+import { stepTweens } from "./anim.js?v=20";
+import { LessonContext } from "./course.js?v=20";
+import { ELECTRONICS } from "./lessons-electronics.js?v=20";
+import { ARDUINO } from "./lessons-arduino.js?v=20";
+import { ESP32 } from "./lessons-esp32.js?v=20";
+import { Simulator, buildRobot } from "./sim.js?v=20";
+import { HandInput } from "../handinput.js?v=20";
+import { projectLesson } from "./project.js?v=20";
+import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=20";
+import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=20";
+import { PIANO } from "./project-examples.js?v=20";
+import { KIT, kitPlan } from "./kit.js?v=20";
 
 const VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 export const MODULES = [ELECTRONICS, ARDUINO, ESP32];
@@ -115,9 +116,27 @@ function keyForm() {
     </form>`;
 }
 
+// "My kit": a short lesson for every part of his own Arduino kit.
+function kitBlock() {
+  return `
+    <div class="kit-block">
+      <h1>${KIT.title}</h1>
+      <p class="ac-lead">${KIT.lead}</p>
+      ${KIT.groups.map((g) => `
+        <h2><span>${g.label}</span>${g.title}</h2>
+        <div class="ac-cards">${g.lessons.map((l) => `
+          <button class="ac-card ${done.has(`kit-${l.id}`) ? "done" : ""}" data-kit="${l.id}">
+            <b class="ac-num">${done.has(`kit-${l.id}`) ? "✓" : l.emoji}</b>
+            <span><strong>${l.n}. ${l.title}</strong><small>${l.summary}</small></span>
+            <i>${l.minutes} min</i>
+          </button>`).join("")}</div>`).join("")}
+    </div>`;
+}
+
 function renderMenu() {
   let n = 0;
   ui.menu.innerHTML = `
+    ${kitBlock()}
     ${projectBlock()}
     <h1>Robotics course</h1>
     <p class="ac-lead">From your first LED to a robot that finds its own way: ${LESSONS.length} short 3D lessons, then build, wire and program your own robot in the simulator.</p>
@@ -141,9 +160,10 @@ ui.menu.addEventListener("click", (e) => {
   if (chip) { plan(chip.dataset.example); return; }
   const del = e.target.closest("[data-del]");
   if (del) { deleteProject(Number(del.dataset.del)); renderMenu(); return; }
-  const card = e.target.closest("[data-lesson], [data-sim], [data-project]");
+  const card = e.target.closest("[data-lesson], [data-sim], [data-project], [data-kit]");
   if (!card) return;
-  if (card.dataset.sim) go("sim");
+  if (card.dataset.kit) go(`kit/${card.dataset.kit}`);
+  else if (card.dataset.sim) go("sim");
   else if (card.dataset.project) go(`project/${card.dataset.project}`);
   else go(card.dataset.lesson);
 });
@@ -224,7 +244,9 @@ export function go(where, { push = true } = {}) {
   if (push && location.hash !== hash) history.pushState(null, "", hash);
   teardown();
   const project = where.startsWith("project/") ? projectPlan(where.slice(8)) : null;
+  const kit = where.startsWith("kit/") ? kitPlan(where.slice(4)) : null;
   if (where === "sim") openSim();
+  else if (kit) openLesson(projectLesson(kit));
   else if (project) openLesson(projectLesson(project, { change: (text) => plan(text, project) }));
   else if (LESSONS.some((l) => l.id === where)) openLesson(LESSONS.find((l) => l.id === where));
   else openMenu();
@@ -254,8 +276,8 @@ function openLesson(l) {
   state = lesson.setup(ctx);
   ui.lesson.hidden = false;
   $(".ac-lesson-title").textContent = lesson.title;
-  $(".ac-lesson-module").textContent = lesson.custom ? "Project tutor" : `Module ${lesson.moduleIndex + 1} · ${lesson.module.title}`;
-  ui.crumbs.innerHTML = `<button class="ac-link" data-act="menu">${lesson.custom ? "Projects" : "Course"}</button> › ${esc(lesson.title)}`;
+  $(".ac-lesson-module").textContent = lesson.kit ? `My kit · Lesson ${lesson.kit.n} of ${KIT.lessons.length}` : lesson.custom ? "Project tutor" : `Module ${lesson.moduleIndex + 1} · ${lesson.module.title}`;
+  ui.crumbs.innerHTML = `<button class="ac-link" data-act="menu">${lesson.kit ? "My kit" : lesson.custom ? "Projects" : "Course"}</button> › ${esc(lesson.title)}`;
   $(".ac-dots").innerHTML = lesson.steps.map((s, i) => `<button class="ac-dot" data-step="${i}" title="${s.title}"></button>`).join("");
   goStep(0);
 }
@@ -274,15 +296,18 @@ function goStep(i) {
   $("[data-act=prev]").disabled = stepIndex === 0;
   const last = stepIndex === lesson.steps.length - 1;
   const nextLesson = LESSONS[LESSONS.indexOf(lesson) + 1];
-  $("[data-act=next]").innerHTML = last ? (lesson.custom ? "All projects ▶" : nextLesson ? "Next lesson ▶" : "To the simulator ▶") : "Next ▶";
+  const nextKit = lesson.kit ? KIT.lessons[lesson.kit.n] : null;
+  $("[data-act=next]").innerHTML = last ? (lesson.kit ? (nextKit ? `Next: ${esc(nextKit.title)} ▶` : "All lessons ▶") : lesson.custom ? "All projects ▶" : nextLesson ? "Next lesson ▶" : "To the simulator ▶") : "Next ▶";
   if (step.camera) stage.flyTo(step.camera);
   step.enter(ctx, state);
-  if (last && !lesson.custom) markDone(lesson.id);
+  if (last && lesson.kit) markDone(`kit-${lesson.kit.id}`);
+  else if (last && !lesson.custom) markDone(lesson.id);
 }
 
 function next() {
   if (view !== "lesson") return;
   if (stepIndex < lesson.steps.length - 1) return goStep(stepIndex + 1);
+  if (lesson.kit) { const nk = KIT.lessons[lesson.kit.n]; return go(nk ? `kit/${nk.id}` : "menu"); }
   if (lesson.custom) return go("menu");
   const nextLesson = LESSONS[LESSONS.indexOf(lesson) + 1];
   go(nextLesson ? nextLesson.id : "sim");
@@ -460,6 +485,9 @@ export function command(raw) {
   if (/\b(repeat|again|replay)\b/.test(text) && view === "lesson") { goStep(stepIndex); return "Once more."; }
   if (/\b(menu|all lessons|course map|lesson list)\b/.test(text)) { go("menu"); return "Here's the course."; }
   if (/\b(simulator|build (a|my|the|our) robot)\b/.test(text)) { go("sim"); return "Opening the robot simulator."; }
+  const kitHit = /\b(my kit|kit lesson|arduino kit)\b/.test(text) ? null : KIT.lessons.find((l) => l.say && new RegExp(`\\b(${l.say})\\b`).test(text) && /\b(open|show|lesson|teach|learn|start)\b/.test(text));
+  if (kitHit) { go(`kit/${kitHit.id}`); return `Opening the ${kitHit.title} lesson.`; }
+  if (/\b(my kit|arduino kit|kit lessons)\b/.test(text)) { go("menu"); return "Here are the lessons for your kit."; }
   const m = text.match(/\blesson (\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b/);
   if (m) {
     const words = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
@@ -475,7 +503,7 @@ export function command(raw) {
 
 // One line describing where he is, for the language model.
 export function describe() {
-  if (view === "lesson" && lesson.custom) return lesson.describe(stepIndex);
+  if (view === "lesson" && (lesson.custom || lesson.kit)) return lesson.describe(stepIndex);
   if (view === "lesson") return `He is in the Robotics Academy, lesson "${lesson.title}", step ${stepIndex + 1} of ${lesson.steps.length}: "${lesson.steps[stepIndex].title}".`;
   if (view === "sim") return `He is in the Robotics Academy's robot simulator, on the ${sim.mode} tab.`;
   if (planning && !planning.error) return `He is in the Robotics Academy; the project tutor is designing "${planning.request}" for him (it takes about half a minute).`;
@@ -483,3 +511,6 @@ export function describe() {
 }
 
 export function route(sub) { go(sub || "menu", { push: false }); }
+
+// For automated checks (?debug in the address): the open lesson's state.
+if (new URLSearchParams(location.search).has("debug")) window.__academy = { state: () => state, lesson: () => lesson, goStep: (i) => goStep(i), step: () => stepIndex };

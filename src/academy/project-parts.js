@@ -3,7 +3,8 @@
 // potentiometer, servo, light sensor and a labelled generic module) are
 // built here at real size in centimetres.
 import * as THREE from "three";
-import * as P from "./parts.js?v=19";
+import * as P from "./parts.js?v=20";
+import { KIT_KINDS, buildKitPart } from "./kit-parts.js?v=20";
 
 const { makePart, addPin, MAT, PITCH } = P;
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -205,6 +206,7 @@ export const KINDS = {
   battery_9v: ["+", "-"],
   ldr: ["1", "2"],
   breadboard: ["+", "-"],
+  ...KIT_KINDS,
   module: [],
 };
 
@@ -230,7 +232,7 @@ export function buildPart(spec) {
     case "battery_9v": part = P.battery9v(); break;
     case "ldr": part = ldr(); break;
     case "breadboard": part = railBoard(); break;
-    default: part = genericModule(spec.label || "Module", spec.pins || []);
+    default: part = buildKitPart(spec.type) ?? genericModule(spec.label || "Module", spec.pins || []);
   }
   return part;
 }

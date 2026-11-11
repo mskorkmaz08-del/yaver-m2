@@ -3,9 +3,9 @@
 // sliders, scroll panels, grab things in the 3D scene, orbit and zoom the
 // view, and swipe between steps. The same gestures as the Studio: pinch to
 // press or grab, open the hand to let go, both hands to zoom.
-import { sharedTracker } from "./hands.js?v=19";
-import { classify } from "./gestures.js?v=19";
-import { OneEuro, Glide } from "./filters.js?v=19";
+import { sharedTracker } from "./hands.js?v=20";
+import { classify } from "./gestures.js?v=20";
+import { OneEuro, Glide } from "./filters.js?v=20";
 
 const SMOOTHING = 0.35;
 const RELEASE_GRACE_MS = 140;

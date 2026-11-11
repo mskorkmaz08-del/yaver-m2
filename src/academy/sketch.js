@@ -9,6 +9,8 @@ const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const STOP = Symbol("stop");
 
 const TYPE = String.raw`(?:(?:unsigned|signed|static|volatile|const)\s+)*(?:void|int|long|short|float|double|bool|boolean|byte|char|word|size_t|String|u?int(?:8|16|32|64)_t)(?:\s+(?:long|int))*`;
+// Arduino libraries the simulator has stand-ins for (see project.js).
+const LIBS = ["Stepper", "LiquidCrystal", "DHT", "MFRC522", "ThreeWire"];
 const INT_TYPE = /^(?:(?:unsigned|signed|static|volatile|const)\s+)*(?:int|long|short|byte|word|size_t|u?int(?:8|16|32|64)_t|char)(?:\s+(?:long|int))*$/;
 
 // ---- Translating C++ to JavaScript -----------------------------------------------
@@ -27,6 +29,18 @@ export function translate(src) {
   code = code
     .replace(/\bServo\s+(\w+)\s*\[\s*(\w+)\s*\]\s*;/g, "let $1 = Array.from(new Array($2), () => __Servo());")
     .replace(/\bServo\s+(\w+(?:\s*,\s*\w+)*)\s*;/g, (m, names) => names.split(",").map((n) => `let ${n.trim()} = __Servo();`).join(" "));
+
+  // Library objects the simulator knows: "Stepper motor(2048, 8, 10, 9, 11);",
+  // "Keypad keys = Keypad(...)", "RtcDS1302<ThreeWire> Rtc(myWire);".
+  code = code
+    .replace(new RegExp(String.raw`\b(${LIBS.join("|")})\s+(\w+)\s*\(([^;]*)\)\s*;`, "g"), (m, type, name, args) => `let ${name} = __new("${type}"${args.trim() ? `, ${args}` : ""});`)
+    .replace(/\bKeypad\s+(\w+)\s*=\s*Keypad\s*\(/g, 'let $1 = __new("Keypad", ')
+    .replace(/\bmakeKeymap\s*\(/g, "(")
+    .replace(/\bRtcDS1302\s*<\s*\w+\s*>\s+(\w+)\s*\(\s*(\w+)\s*\)\s*;/g, 'let $1 = __new("RtcDS1302", $2);')
+    .replace(/\bRtcDateTime\s+(\w+)\s*=/g, "let $1 =")
+    .replace(/\bRtcDateTime\s*\(/g, '__new("RtcDateTime", ')
+    .replace(/\b(\w+)\.step\s*\(/g, "await $1.step(")
+    .replace(/\bB([01]{1,8})\b/g, "0b$1");
 
   code = code
     .replace(/^\s*#include[^\n]*/gm, "")
@@ -62,7 +76,7 @@ export function translate(src) {
     return `${kw} ${name} = new Array(${n}).fill(0);`;
   });
   // Brace initialisers become array literals (innermost first).
-  for (let i = 0; i < 4; i++) code = code.replace(/([=,[(]\s*)\{([^{};]*)\}/g, "$1[$2]");
+  for (let i = 0; i < 4; i++) code = code.replace(/([=,[({]\s*)\{([^{};]*)\}/g, "$1[$2]");
 
   // Declarations: drop the type. Integers are truncated like in C when set.
   code = rewriteDeclarations(code);
@@ -239,6 +253,15 @@ export class SketchRunner {
       if (typeof v === "boolean") return v ? "1" : "0";
       return String(v);
     };
+    // What library stand-ins get: the clock, pin writes and number printing.
+    const rt = {
+      check: () => r.check(),
+      wait: (ms) => new Promise((res) => setTimeout(res, Math.max(ms, 0))).then(() => { r.lastYield = performance.now(); r.check(); }),
+      write: (p, v) => hw.digitalWrite(pinNum(p), v ? 1 : 0),
+      output: (p) => hw.pinMode(pinNum(p), "OUTPUT"),
+      millis: () => r.millis(),
+      fmt: (v, b) => fmt(v, b),
+    };
     let line = "";
     const out = (s) => {
       line += s;
@@ -271,6 +294,7 @@ export class SketchRunner {
       },
       delay: (ms) => {
         r.check();
+        hw.sample?.(); // what the pins show now stays on while we wait
         return new Promise((res) => setTimeout(res, Math.max(Number(ms) || 0, 0))).then(() => { r.lastYield = performance.now(); r.check(); });
       },
       delayMicroseconds: (us) => { r.check(); r.offset += us / 1000; },
@@ -317,6 +341,30 @@ export class SketchRunner {
           read: () => Math.round(angle),
         };
       },
+      shiftOut: (data, clock, order, value) => {
+        r.check();
+        for (let i = 0; i < 8; i++) {
+          const bit = order === 0 ? (value >> i) & 1 : (value >> (7 - i)) & 1;
+          hw.digitalWrite(pinNum(data), bit);
+          hw.digitalWrite(pinNum(clock), 1);
+          hw.digitalWrite(pinNum(clock), 0);
+        }
+      },
+      LSBFIRST: 0, MSBFIRST: 1,
+      bitRead: (v, n) => (v >> n) & 1,
+      bit: (n) => 1 << n,
+      isnan: (v) => Number.isNaN(Number(v)),
+      NAN: NaN,
+      DHT11: 11, DHT22: 22, NO_KEY: 0, ENABLE_LED_FEEDBACK: true, DISABLE_LED_FEEDBACK: false,
+      __DATE__: (() => { const d = new Date(); return `${d.toLocaleString("en-US", { month: "short" })} ${String(d.getDate()).padStart(2, " ")} ${d.getFullYear()}`; })(),
+      __TIME__: new Date().toTimeString().slice(0, 8),
+      SPI: { begin: () => {}, end: () => {} },
+      __new: (type, ...args) => {
+        const make = hw.libs?.[type];
+        if (!make) throw new Error(`The simulator doesn't have the ${type} library.`);
+        return make(rt, ...args);
+      },
+      IrReceiver: hw.libs?.IrReceiver?.(rt) ?? { begin: () => {}, decode: () => false, resume: () => {}, decodedIRData: { command: 0 } },
       ...(hw.constants?.() ?? {}),
     };
   }
