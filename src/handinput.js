@@ -7,7 +7,7 @@ import { sharedTracker } from "./hands.js?v=22";
 import { classify } from "./gestures.js?v=22";
 import { OneEuro, Glide } from "./filters.js?v=22";
 
-const SMOOTHING = 0.35;
+const SMOOTHING = 0;
 const RELEASE_GRACE_MS = 140;
 const LOST_HAND_MS = 300;
 const POINTER_FILTER = [1.0, 0.007];
