@@ -277,3 +277,7 @@ i.band { border-radius: 2px; width: 8px; height: 14px; vertical-align: -3px; mar
 .kit-remote { display: grid; grid-template-columns: repeat(3, 58px); gap: 5px; padding: 10px; background: #15161a; border-radius: 16px; width: max-content; }
 .kit-remote .ac-btn { border-radius: 999px; padding: 6px 0; font-size: 12px; font-weight: 700; }
 .kit-remote-title { margin-top: 4px; }
+.pj-plugs { padding-left: 18px; margin: 4px 0 8px; }
+.pj-plugs li { padding: 2px 0; }
+.pj-wires li.pj-nowire b { color: var(--muted); }
+.pj-wires li.pj-nowire .pj-swatch { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35) inset; border: 1px dashed rgba(255, 255, 255, 0.5); }

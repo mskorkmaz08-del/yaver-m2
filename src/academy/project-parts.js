@@ -3,8 +3,8 @@
 // potentiometer, servo, light sensor and a labelled generic module) are
 // built here at real size in centimetres.
 import * as THREE from "three";
-import * as P from "./parts.js?v=22";
-import { KIT_KINDS, buildKitPart } from "./kit-parts.js?v=22";
+import * as P from "./parts.js?v=23";
+import { KIT_KINDS, buildKitPart } from "./kit-parts.js?v=23";
 
 const { makePart, addPin, MAT, PITCH } = P;
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -176,19 +176,12 @@ export function button() {
   return part;
 }
 
-// A breadboard used for its power rails: "+" and "−" are each a long strip,
-// so any number of wires can share them (each lands in its own hole).
+// The kit's full-size breadboard (830 holes). Its "+" and "−" pins stand for
+// the power rails; bench.js decides which hole each part and wire uses.
 export function railBoard() {
-  const part = P.breadboard();
-  let plus = 0, minus = 0;
-  // The next free hole on a rail, in the board's own space.
-  part.userData.railHole = (which) => {
-    const i = which === "+" ? plus++ : minus++;
-    const k = (i * 3) % 25;
-    return part.userData.rail(k, which === "+" ? "bottom+" : "bottom-");
-  };
-  addPin(part, "+", part.userData.rail(0, "bottom+"), "+ rail");
-  addPin(part, "-", part.userData.rail(0, "bottom-"), "− rail");
+  const part = P.breadboard({ cols: 63 });
+  addPin(part, "+", part.userData.rail(0, "top+"), "+ rail");
+  addPin(part, "-", part.userData.rail(0, "top-"), "− rail");
   return part;
 }
 

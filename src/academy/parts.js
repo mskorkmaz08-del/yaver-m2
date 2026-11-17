@@ -353,31 +353,38 @@ export function arduinoUno() {
   return part;
 }
 
-// ---- Breadboard (half size, 400 points) -------------------------------------
+// ---- Breadboard (half size, 400 points; or full size, 830 points) ------------
 
-export function breadboard() {
-  const part = makePart("breadboard", "Half-size breadboard", "Push parts and wires into the holes to build a circuit without soldering. Metal clips inside join the holes in groups.");
-  const COLS = 30, W = 8.25, D = 5.5, H = 0.85;
+export function breadboard({ cols = 30 } = {}) {
+  const full = cols > 40;
+  const part = makePart("breadboard", full ? "Breadboard (830 holes)" : "Half-size breadboard", "Push parts and wires into the holes to build a circuit without soldering. Metal clips inside join the holes in groups.");
+  const COLS = cols, W = COLS * PITCH + 0.63, D = 5.5, H = 0.85;
+  const RAIL = full ? 50 : 25; // holes along each power rail, in groups of five
   const colX = (c) => (c - (COLS - 1) / 2) * PITCH;
   const rowZ = (r) => (r < 5 ? -0.381 - (4 - r) * PITCH : 0.381 + (r - 5) * PITCH); // a..e, then f..j
   const railZ = [-2.31, -2.06, 2.06, 2.31]; // top -, top +, bottom +, bottom -
-  const railX = (i) => (i - 12 + Math.floor(i / 5) - 2) * PITCH; // groups of five, a gap between groups
+  const railMid = (RAIL - 1 + RAIL / 5 - 1) / 2;
+  const railX = (i) => (i + Math.floor(i / 5) - railMid) * PITCH; // groups of five, a gap between groups
+  const railEnd = railX(RAIL - 1) + 0.2;
   const tex = silk(W, D, "#f1eee5", (g, s) => {
     g.fillStyle = "#1a1a1a";
     const hole = (x, z) => g.fillRect((x - 0.04) * s, (z - 0.04) * s, 0.08 * s, 0.08 * s);
     for (let c = 0; c < COLS; c++) for (let r = 0; r < 10; r++) hole(colX(c), rowZ(r));
-    for (const z of railZ) for (let i = 0; i < 25; i++) hole(railX(i), z);
+    for (const z of railZ) for (let i = 0; i < RAIL; i++) hole(railX(i), z);
     g.fillStyle = "#e7e3d8"; g.fillRect(-W / 2 * s, -0.12 * s, W * s, 0.24 * s); // centre channel
     g.fillStyle = "#cfcabd"; g.fillRect(-W / 2 * s, -0.05 * s, W * s, 0.1 * s);
-    for (const [z, col] of [[-2.5, "#d33"], [-1.88, "#26c"], [1.88, "#d33"], [2.5, "#26c"]]) { g.fillStyle = col; g.fillRect(-3.4 * s, (z - 0.012) * s, 6.8 * s, 0.024 * s); }
-    text(g, s, "–", -3.75, -2.31, { size: 0.22, color: "#26c", weight: 800 });
-    text(g, s, "+", -3.75, -2.06, { size: 0.22, color: "#d33", weight: 800 });
-    text(g, s, "+", -3.75, 2.06, { size: 0.22, color: "#d33", weight: 800 });
-    text(g, s, "–", -3.75, 2.31, { size: 0.22, color: "#26c", weight: 800 });
-    "abcde".split("").forEach((l, i) => text(g, s, l, -3.95, rowZ(i), { size: 0.12, color: "#777" }));
-    "fghij".split("").forEach((l, i) => text(g, s, l, -3.95, rowZ(5 + i), { size: 0.12, color: "#777" }));
+    for (const [z, col] of [[-2.5, "#d33"], [-1.88, "#26c"], [1.88, "#d33"], [2.5, "#26c"]]) { g.fillStyle = col; g.fillRect(-railEnd * s, (z - 0.012) * s, 2 * railEnd * s, 0.024 * s); }
+    for (const sx of full ? [-1, 1] : [-1]) {
+      const x = sx * (W / 2 - 0.37);
+      text(g, s, "–", x, -2.31, { size: 0.22, color: "#26c", weight: 800 });
+      text(g, s, "+", x, -2.06, { size: 0.22, color: "#d33", weight: 800 });
+      text(g, s, "+", x, 2.06, { size: 0.22, color: "#d33", weight: 800 });
+      text(g, s, "–", x, 2.31, { size: 0.22, color: "#26c", weight: 800 });
+    }
+    "abcde".split("").forEach((l, i) => text(g, s, l, -(W / 2 - 0.17), rowZ(i), { size: 0.12, color: "#777" }));
+    "fghij".split("").forEach((l, i) => text(g, s, l, -(W / 2 - 0.17), rowZ(5 + i), { size: 0.12, color: "#777" }));
     for (let c = 0; c < COLS; c += 5) text(g, s, String(c + 1), colX(c), -1.7, { size: 0.11, color: "#777" });
-  }, 200);
+  }, full ? 150 : 200);
   const topMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, transparent: true });
   const white = new THREE.MeshStandardMaterial({ color: "#f0eee6", roughness: 0.65, transparent: true });
   const body = mesh(new THREE.BoxGeometry(W, H, D), [white, white, topMat, white, white, white], part.userData.info);
@@ -402,8 +409,8 @@ export function breadboard() {
     part.userData.clips.push(clip);
   }
   for (const z of railZ) {
-    const clip = box(6.9, 0.5, 0.16, clipMat.clone());
-    at(clip, (railX(0) + railX(24)) / 2, H - 0.35, z);
+    const clip = box(railX(RAIL - 1) - railX(0) + 0.2, 0.5, 0.16, clipMat.clone());
+    at(clip, (railX(0) + railX(RAIL - 1)) / 2, H - 0.35, z);
     clip.userData.group = { kind: "rail", z };
     clips.add(clip);
     part.userData.clips.push(clip);
@@ -439,6 +446,7 @@ export function breadboard() {
   part.userData.hole = (c, r) => new THREE.Vector3(colX(c), H, rowZ("abcdefghij".indexOf(r)));
   part.userData.rail = (i, which) => new THREE.Vector3(railX(i), H, railZ[["top-", "top+", "bottom+", "bottom-"].indexOf(which)]);
   part.userData.size = { w: W, h: H, d: D, base: 0 };
+  part.userData.grid = { cols: COLS, rail: RAIL, colX, rowZ, railX, railZ, H, W, D };
   return part;
 }
 
