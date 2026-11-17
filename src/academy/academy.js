@@ -3,20 +3,20 @@
 // it is opened from Yaver's home screen. Hands (through the webcam) or the
 // mouse drive everything: pinch to press buttons and grab parts, move to
 // turn the view, both hands to zoom, and an open-hand swipe to change step.
-import { Stage } from "./stage.js?v=22";
-import { stepTweens } from "./anim.js?v=22";
-import { LessonContext } from "./course.js?v=22";
-import { ELECTRONICS } from "./lessons-electronics.js?v=22";
-import { ARDUINO } from "./lessons-arduino.js?v=22";
-import { ESP32 } from "./lessons-esp32.js?v=22";
-import { Simulator, buildRobot } from "./sim.js?v=22";
-import { HandInput } from "../handinput.js?v=22";
-import { projectLesson } from "./project.js?v=22";
-import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=22";
-import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=22";
-import { PIANO } from "./project-examples.js?v=22";
-import { KIT, kitPlan } from "./kit.js?v=22";
-import { isOn, onSwitch } from "../switches.js?v=22";
+import { Stage } from "./stage.js?v=23";
+import { stepTweens } from "./anim.js?v=23";
+import { LessonContext } from "./course.js?v=23";
+import { ELECTRONICS } from "./lessons-electronics.js?v=23";
+import { ARDUINO } from "./lessons-arduino.js?v=23";
+import { ESP32 } from "./lessons-esp32.js?v=23";
+import { Simulator, buildRobot } from "./sim.js?v=23";
+import { HandInput } from "../handinput.js?v=23";
+import { projectLesson } from "./project.js?v=23";
+import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=23";
+import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=23";
+import { PIANO } from "./project-examples.js?v=23";
+import { KIT, kitPlan } from "./kit.js?v=23";
+import { isOn, onSwitch } from "../switches.js?v=23";
 
 const VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 export const MODULES = [ELECTRONICS, ARDUINO, ESP32];

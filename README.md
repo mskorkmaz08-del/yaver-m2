@@ -29,6 +29,8 @@ At the top of the Academy, **My Arduino kit** has a short lesson for every part 
 
 Each lesson wires the part up pin by pin in 3D, then runs two or three small programs that build on each other: do it **once**, repeat it in a **loop**, make it **react**. Every program runs in the simulator against the circuit as wired (the stepper turns step by step, displays multiplex, the LCD prints, the keypad, remote and RFID cards can be pressed or tapped, sensors have sliders) and copies straight into the Arduino IDE. The last step of each lesson covers uploading to the CH340 board on a Mac and any library to install. Lessons live in `src/academy/kit.js`, the new 3D parts in `kit-parts.js`, and the library stand-ins (Stepper, LiquidCrystal, DHT, Keypad, IRremote, MFRC522, Rtc by Makuna) in `kit-sim.js`. Links: `#academy/kit/<lesson>`, such as `#academy/kit/stepper`.
 
+Every circuit is built the way you would on the desk: a full 830-hole breadboard sits in front of the Uno, LEDs, resistors, chips and small sensors are plugged into its holes (legs that belong together share a column, ground goes to the − rail), and jumper wires run from the Uno's header pins to those holes and lie on the surfaces. Parts you hold, dip or that would cover every hole (servo, stepper, keypad, matrix, RC522, water and sound sensors) sit on the table and are joined by jumpers. The placement and routing live in `src/academy/bench.js`; each build step lists what to plug in and which hole each wire goes to.
+
 ## Project tutor
 
 At the top of the Academy, **Make your own project**: type (or tell Yaver) what you want to build, such as "a piano from an Arduino". The AI designs it and the Academy shows it in 3D:
