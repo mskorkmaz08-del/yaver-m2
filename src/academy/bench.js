@@ -5,9 +5,9 @@
 // the board's header to free holes, rails and module pins, and lie over
 // whatever is under them instead of looping through the air.
 import * as THREE from "three";
-import { arduinoUno, esp32, pinWorld, MAT } from "./parts.js?v=25";
-import { buildPart } from "./project-parts.js?v=25";
-import { dispose } from "./stage.js?v=25";
+import { arduinoUno, esp32, pinWorld, MAT } from "./parts.js?v=26";
+import { buildPart } from "./project-parts.js?v=26";
+import { dispose } from "./stage.js?v=26";
 
 const P = 0.254; // 0.1 inch between holes
 const Z0 = P / 2; // the cell grid sits half a pitch off centre in z, like the holes
@@ -399,10 +399,40 @@ function planIt(plan, keep) {
     phys.set(pfind(a), pfind(b));
     return { skip: false };
   });
+  // A board pin that feeds two or more wires (D13 to both the 595 and the
+  // RFID reader): a header socket holds one jumper, so the pin goes to a free
+  // breadboard column first and those wires start from that column.
+  const hubs = new Map(); // pin → { c, rows, at, boardRow }
+  if (g) {
+    const uses = new Map();
+    plan.wires.forEach((w, i) => {
+      if (ends[i].skip) return;
+      for (const e of [w.from, w.to]) if (e.part === "BOARD" && e.pin !== "GND" && e.pin !== "5V") { if (!uses.has(e.pin)) uses.set(e.pin, []); uses.get(e.pin).push(i); }
+    });
+    for (const [pin, list] of uses) {
+      if (list.length < 2) continue;
+      const at = pinWorld(board, pin);
+      let best = null;
+      for (let c = 0; c < g.cols; c++) for (const half of [0, 1]) {
+        const rows = half === 0 ? [0, 1, 2, 3, 4] : [5, 6, 7, 8, 9];
+        if (rows.some((r) => cells.has(cellKey(...holeXZ(c, r))))) continue;
+        // Near the pin, and away from columns in use on either side.
+        const crowd = [-1, 1].reduce((n, dc) => n + rows.filter((r) => c + dc >= 0 && c + dc < g.cols && cells.has(cellKey(...holeXZ(c + dc, r)))).length, 0);
+        const d = Math.abs(g.colX(c) - at.x) + Math.abs(g.rowZ(rows[2]) - at.z) * 0.5 + crowd * 0.4;
+        if (!best || d < best.d) best = { c, rows, d };
+      }
+      if (!best) continue;
+      best.rows.forEach((r) => cells.set(cellKey(...holeXZ(best.c, r)), { owner: "wire" }));
+      const rows = [...best.rows].sort((r1, r2) => Math.abs(g.rowZ(r1) - at.z) - Math.abs(g.rowZ(r2) - at.z));
+      hubs.set(pin, { c: best.c, boardRow: rows.shift(), rows, at: list[0] });
+    }
+  }
+
   // Board pins, module pins and holes first; rails last, near the other end.
   plan.wires.forEach((w, i) => {
     if (ends[i].skip) return;
     const one = (e, other) => {
+      if (e.part === "BOARD" && hubs.has(e.pin)) { const hb = hubs.get(e.pin); return { ...holeEnd(hb.c, hb.rows.shift()), hub: e.pin }; }
       if (e.part === "BOARD") { const name = boardPin(e.pin, new THREE.Vector3(...roughEnd(other).pos)); return { kind: "board", pos: pinWorld(board, name).toArray(), dir: UP, name: e.pin, pin: name }; }
       if (isRail(e)) return null;
       const h = holeOf.get(`${e.part}.${e.pin}`);
@@ -432,6 +462,10 @@ function planIt(plan, keep) {
     const at = plan.wires.findIndex((w, i) => !ends[i].skip && [ends[i].a, ends[i].b].some((x) => x.kind === "rail" && x.pin === pin && x.line === "bottom"));
     const x = -g.W / 2 + 0.6 + (pin === "+" ? 0.25 : 0);
     bridges.push({ at, color: pin === "-" ? "black" : "red", a: railEnd(pin, "top", x), b: railEnd(pin, "bottom", x) });
+  }
+
+  for (const [pin, hb] of hubs) {
+    bridges.push({ at: hb.at, hub: pin, color: plan.wires[hb.at].color, a: { kind: "board", pos: pinWorld(board, pin).toArray(), dir: UP, name: pin, pin }, b: { ...holeEnd(hb.c, hb.boardRow), hub: pin } });
   }
 
   return {

@@ -50,4 +50,6 @@ export function stepTweens(dtMs) {
   }
 }
 
+export const tweening = () => tweens.length > 0;
+
 export const wait = (ms) => tween({ v: 0 }, { v: 1 }, { ms, curve: ease.linear });

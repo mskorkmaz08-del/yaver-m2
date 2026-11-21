@@ -4,13 +4,13 @@
 // the code line by line, and then runs the sketch against the circuit as
 // wired: buttons can be pressed, the buzzer plays, LEDs light, servos turn.
 import * as THREE from "three";
-import { arduinoUno, esp32, WIRE_COLORS } from "./parts.js?v=25";
-import { stopTweens } from "./anim.js?v=25";
-import { withBreadboard, benchPlan, benchWire, surfaces, holeName } from "./bench.js?v=25";
-import { buildPart } from "./project-parts.js?v=25";
-import { SketchRunner } from "./sketch.js?v=25";
-import { KIT_SHOP, KEYPAD_KEYS } from "./kit-parts.js?v=25";
-import { kitLibs, IR_KEYS, CARDS } from "./kit-sim.js?v=25";
+import { arduinoUno, esp32, WIRE_COLORS } from "./parts.js?v=26";
+import { stopTweens } from "./anim.js?v=26";
+import { withBreadboard, benchPlan, benchWire, surfaces, holeName } from "./bench.js?v=26";
+import { buildPart } from "./project-parts.js?v=26";
+import { SketchRunner } from "./sketch.js?v=26";
+import { KIT_SHOP, KEYPAD_KEYS } from "./kit-parts.js?v=26";
+import { kitLibs, IR_KEYS, CARDS } from "./kit-sim.js?v=26";
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -397,7 +397,7 @@ function layout(ctx, plan) {
   });
   for (const br of bench.bridges) if (wires[br.at]) wires[br.at].add(lay(br, br.color));
   for (const w of wires) w.traverse((m) => { m.userData.noPick = true; });
-  return { board, objects, wires };
+  return { board, objects, wires, bench };
 }
 
 const SHOP = {
@@ -418,6 +418,7 @@ const SHOP = {
 
 // ---- The lesson ------------------------------------------------------------------------
 
+const boardPinName = (plan, pin) => pinLabel(plan, { part: "BOARD", pin });
 const pinLabel = (plan, e) => {
   if (e.part === "BOARD") return e.pin === "GND" ? "GND" : plan.board === "uno" ? e.pin.replace(/^D/, "pin ") : e.pin.replace(/^IO/, "GPIO ");
   const p = plan.parts.find((q) => q.id === e.part);
@@ -442,7 +443,7 @@ const legName = (p, pin) => ({ led: { A: "long leg (+)", K: "short leg (−)" },
 
 // One end of a wire as it is on the bench: a hole, a rail, a header pin.
 function endText(plan, e, at) {
-  if (at.kind === "hole") return `hole ${at.name}`;
+  if (at.kind === "hole") return at.hub ? `hole ${at.name} (the ${boardPinName(plan, at.hub)} column)` : `hole ${at.name}`;
   if (at.kind === "rail") return at.name;
   return pinLabel(plan, e);
 }
@@ -479,7 +480,9 @@ export function projectLesson(plan, hooks = {}) {
       const where = e.skip
         ? e.sameColumn ? `Same breadboard column (${holeName(e.a)} and ${holeName(e.b)}): the clip inside joins them, no wire needed.` : "Already joined through the breadboard and the wires before: no wire needed."
         : `Wire: ${endText(plan, w.from, e.a)} → ${endText(plan, w.to, e.b)}.`;
-      return `<li class="${e.skip ? "pj-nowire" : ""}"><i class="pj-swatch" style="background:${e.skip ? "transparent" : WIRE_COLORS[w.color] ?? "#888"}"></i><b>${esc(wireText(plan, w))}</b><br><small>${esc(where)}${w.why ? ` ${esc(w.why)}` : ""}</small></li>`;
+      const hub = bench.bridges.find((br) => br.hub && br.at === k);
+      const first = hub ? `<li class="pj-hub"><i class="pj-swatch" style="background:${WIRE_COLORS[w.color] ?? "#888"}"></i><b>${esc(boardPinName(plan, hub.hub))} → breadboard hole ${esc(hub.b.name)}</b><br><small>${esc(`Wire: ${boardPinName(plan, hub.hub)} feeds more than one part, and one socket holds one jumper. So it goes to a free column first, and the parts take it from there.`)}</small></li>` : "";
+      return first + `<li class="${e.skip ? "pj-nowire" : ""}"><i class="pj-swatch" style="background:${e.skip ? "transparent" : WIRE_COLORS[w.color] ?? "#888"}"></i><b>${esc(wireText(plan, w))}</b><br><small>${esc(where)}${w.why ? ` ${esc(w.why)}` : ""}</small></li>`;
     }).join("");
     steps.push({ title: s.title, text: md(s.text) + (plugs ? `<h4>Plug in</h4><ul class="pj-plugs">${plugs}</ul>` : "") + (list ? `<h4>Connect</h4><ul class="pj-wires">${list}</ul>` : ""), show: i + 1, plan: s });
   });
@@ -537,8 +540,8 @@ function lessonObject(plan, hooks, steps, partAt, wireAt) {
 
 function setup(ctx, plan, hooks) {
   plan = withBreadboard(plan);
-  const { board, objects, wires } = layout(ctx, plan);
-  const s = { plan, board, objects, wires, hooks, circuit: new Circuit(plan), sounds: new Sounds(), running: false, error: null, activeCode: plan.stages?.[0]?.code ?? plan.code, keyQueue: [], irQueue: [], cardPending: null };
+  const { board, objects, wires, bench } = layout(ctx, plan);
+  const s = { plan, board, objects, wires, bench, hooks, circuit: new Circuit(plan), sounds: new Sounds(), running: false, error: null, activeCode: plan.stages?.[0]?.code ?? plan.code, keyQueue: [], irQueue: [], cardPending: null };
   s.circuit.libs = kitLibs(s);
   s.circuit.onSerial = (line) => serial(ctx, s, line);
   const build = plan.steps.filter((st) => !st.code_lines.length);
@@ -778,7 +781,12 @@ function pinTags(ctx, s, st) {
       return [ctx.label(ends[k].clone().add(V(0, 0.15, 0)), esc(text), { auto: true, cls: `pin-tag ${board ? "board" : ""}` })];
     });
   });
-  const items = [...ctx.ui.text.querySelectorAll(".pj-wires li")];
+  // A shared board pin's own jumper: its name on the Uno end. It shows with
+  // the step's first wire from that pin.
+  st.plan.wires.forEach((w, j) => {
+    for (const br of s.bench.bridges) if (br.hub && br.at === w) tags[j].push(ctx.label(V(...br.a.pos).add(V(0, 0.15, 0)), esc(br.hub), { auto: true, cls: "pin-tag board" }));
+  });
+  const items = [...ctx.ui.text.querySelectorAll(".pj-wires li:not(.pj-hub)")];
   let solo = -1;
   items.forEach((li, j) => {
     li.classList.add("pj-solo");

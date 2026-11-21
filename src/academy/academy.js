@@ -3,22 +3,22 @@
 // it is opened from Yaver's home screen. Hands (through the webcam) or the
 // mouse drive everything: pinch to press buttons and grab parts, move to
 // turn the view, both hands to zoom, and an open-hand swipe to change step.
-import { Stage } from "./stage.js?v=25";
-import { stepTweens } from "./anim.js?v=25";
-import { LessonContext } from "./course.js?v=25";
-import { ELECTRONICS } from "./lessons-electronics.js?v=25";
-import { ARDUINO } from "./lessons-arduino.js?v=25";
-import { ESP32 } from "./lessons-esp32.js?v=25";
-import { Simulator, buildRobot } from "./sim.js?v=25";
-import { HandInput } from "../handinput.js?v=25";
-import { projectLesson } from "./project.js?v=25";
-import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=25";
-import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=25";
-import { PIANO } from "./project-examples.js?v=25";
-import { KIT, kitPlan } from "./kit.js?v=25";
-import { isOn, onSwitch } from "../switches.js?v=25";
-import { MiniYaver } from "./miniyaver.js?v=25";
-import { miniPlan } from "./miniyaver-3d.js?v=25";
+import { Stage } from "./stage.js?v=26";
+import { stepTweens, tweening } from "./anim.js?v=26";
+import { LessonContext } from "./course.js?v=26";
+import { ELECTRONICS } from "./lessons-electronics.js?v=26";
+import { ARDUINO } from "./lessons-arduino.js?v=26";
+import { ESP32 } from "./lessons-esp32.js?v=26";
+import { Simulator, buildRobot } from "./sim.js?v=26";
+import { HandInput } from "../handinput.js?v=26";
+import { projectLesson } from "./project.js?v=26";
+import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=26";
+import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=26";
+import { PIANO } from "./project-examples.js?v=26";
+import { KIT, kitPlan } from "./kit.js?v=26";
+import { isOn, onSwitch } from "../switches.js?v=26";
+import { MiniYaver } from "./miniyaver.js?v=26";
+import { miniPlan } from "./miniyaver-3d.js?v=26";
 
 const VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 export const MODULES = [ELECTRONICS, ARDUINO, ESP32];
@@ -49,7 +49,7 @@ root.innerHTML = `
   <aside class="hud ac-panel ac-code" hidden data-hand-scroll></aside>
   <aside class="hud ac-panel ac-scope" hidden></aside>
   <aside class="hud ac-panel ac-info" hidden><button class="ac-x" data-act="close-info" aria-label="Close">×</button><h3></h3><p></p></aside>
-  <div class="ac-hint">✋ Pinch to press or grab · pinch and move to turn · two hands to zoom · swipe an open hand to change step</div>
+  <div class="ac-hint">Drag: turn · right-drag or two fingers: move · pinch or wheel: zoom where you point · double-click a part: go to it</div>
   <canvas class="ac-hands"></canvas>`;
 
 const $ = (sel) => root.querySelector(sel);
@@ -394,12 +394,20 @@ canvas.addEventListener("pointerdown", (e) => {
   }
   mouse = { x, y, sx: x, sy: y, pan, hit };
 });
+// Double-click a part: glide to it.
+canvas.addEventListener("dblclick", (e) => {
+  const hit = stage.pick(e.clientX, e.clientY);
+  if (!hit) return;
+  let o = hit.object;
+  while (o.parent && o.parent !== stage.root && !o.userData.info && !o.userData.projectPart) o = o.parent;
+  stage.flyToObject(o);
+});
 canvas.addEventListener("pointermove", (e) => {
   const x = e.clientX, y = e.clientY;
   if (!mouse) { if (view === "sim") sim.hover(x, y); return; }
   if (mouse.drag) { mouse.drag.move(x, y); if (view === "sim") sim.hover(x, y); return; }
   if (mouse.pan) stage.panBy(x - mouse.x, y - mouse.y);
-  else stage.orbitBy(-(x - mouse.x) * 0.006, -(y - mouse.y) * 0.006);
+  else stage.orbitBy(-(x - mouse.x) * 0.005, -(y - mouse.y) * 0.005);
   mouse.x = x; mouse.y = y;
 });
 canvas.addEventListener("pointerup", (e) => {
@@ -408,7 +416,16 @@ canvas.addEventListener("pointerup", (e) => {
   mouse = null;
 });
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-canvas.addEventListener("wheel", (e) => { e.preventDefault(); stage.zoomBy(Math.exp(e.deltaY * 0.001)); }, { passive: false });
+// Wheel and trackpad. A pinch (the browser sends it as a wheel with Ctrl) or
+// a mouse wheel zooms into the point under the pointer; two fingers sliding
+// on a trackpad move the view.
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const pinch = e.ctrlKey;
+  const trackpad = !pinch && e.deltaMode === 0 && (e.deltaX !== 0 || Math.abs(e.deltaY) < 40);
+  if (trackpad) stage.panBy(-e.deltaX, -e.deltaY);
+  else stage.zoomBy(Math.exp(e.deltaY * (pinch ? 0.012 : e.deltaMode === 1 ? 0.05 : 0.0015)), e.clientX, e.clientY);
+}, { passive: false });
 
 window.addEventListener("keydown", (e) => {
   if (!active || e.target.closest?.("input, textarea")) return;
@@ -472,6 +489,7 @@ function updateInsets() {
 const MAX_FPS = 60;
 let lastTime = performance.now();
 let lastInsets = 0;
+let lastSig = "", lastDraw = 0;
 function loop(now) {
   requestAnimationFrame(loop);
   if (!active) { lastTime = now; return; }
@@ -488,6 +506,13 @@ function loop(now) {
   ctx?.tick(dt);
   if (showcase) showcase.rotation.y += dt * 0.3;
   if (now - lastInsets > 250) { lastInsets = now; updateInsets(); }
+  // A still scene isn't drawn again (the Mini Yaver bench is big): only when
+  // the view moves, something animates, or a hand is up. Saves the battery.
+  const pose = stage.pose, sig = `${pose.x},${pose.y},${pose.z},${pose.theta},${pose.phi},${pose.radius},${stage.shift},${stage.shiftGoal},${innerWidth},${innerHeight}`;
+  const still = lesson?.mini && !state?.running && !tweening() && !input.hands.size && sig === lastSig;
+  lastSig = sig;
+  if (still && now - lastDraw < 1000) return;
+  lastDraw = now;
   stage.render();
 }
 requestAnimationFrame(loop);
