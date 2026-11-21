@@ -3,21 +3,22 @@
 // it is opened from Yaver's home screen. Hands (through the webcam) or the
 // mouse drive everything: pinch to press buttons and grab parts, move to
 // turn the view, both hands to zoom, and an open-hand swipe to change step.
-import { Stage } from "./stage.js?v=24";
-import { stepTweens } from "./anim.js?v=24";
-import { LessonContext } from "./course.js?v=24";
-import { ELECTRONICS } from "./lessons-electronics.js?v=24";
-import { ARDUINO } from "./lessons-arduino.js?v=24";
-import { ESP32 } from "./lessons-esp32.js?v=24";
-import { Simulator, buildRobot } from "./sim.js?v=24";
-import { HandInput } from "../handinput.js?v=24";
-import { projectLesson } from "./project.js?v=24";
-import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=24";
-import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=24";
-import { PIANO } from "./project-examples.js?v=24";
-import { KIT, kitPlan } from "./kit.js?v=24";
-import { isOn, onSwitch } from "../switches.js?v=24";
-import { MiniYaver } from "./miniyaver.js?v=24";
+import { Stage } from "./stage.js?v=25";
+import { stepTweens } from "./anim.js?v=25";
+import { LessonContext } from "./course.js?v=25";
+import { ELECTRONICS } from "./lessons-electronics.js?v=25";
+import { ARDUINO } from "./lessons-arduino.js?v=25";
+import { ESP32 } from "./lessons-esp32.js?v=25";
+import { Simulator, buildRobot } from "./sim.js?v=25";
+import { HandInput } from "../handinput.js?v=25";
+import { projectLesson } from "./project.js?v=25";
+import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=25";
+import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=25";
+import { PIANO } from "./project-examples.js?v=25";
+import { KIT, kitPlan } from "./kit.js?v=25";
+import { isOn, onSwitch } from "../switches.js?v=25";
+import { MiniYaver } from "./miniyaver.js?v=25";
+import { miniPlan } from "./miniyaver-3d.js?v=25";
 
 const VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 export const MODULES = [ELECTRONICS, ARDUINO, ESP32];
@@ -142,7 +143,8 @@ function miniBlock() {
     <div class="kit-block">
       <h2><span>Project</span>Mini Yaver: AI on your Uno</h2>
       <div class="ac-cards">
-        <button class="ac-card ac-sim-card" data-mini="wiring"><b class="ac-num">🔌</b><span><strong>1. Wire it</strong><small>Clickable diagram: 18 parts, all 20 pins, built up in 8 steps.</small></span></button>
+        <button class="ac-card ac-sim-card" data-mini="3d"><b class="ac-num">🧊</b><span><strong>1. Build it in 3D</strong><small>Your kit's real parts on a breadboard, 8 steps. Every wire end is labelled with its pin.</small></span></button>
+        <button class="ac-card ac-sim-card" data-mini="wiring"><b class="ac-num">🔌</b><span><strong>Wiring map</strong><small>The same circuit flat: click any part or Uno pin to follow its wires.</small></span></button>
         <button class="ac-card ac-sim-card" data-mini="code"><b class="ac-num">💻</b><span><strong>2. Understand the code</strong><small>The real sketch and Mac bridge, 7 short sections.</small></span></button>
       </div>
     </div>`;
@@ -178,7 +180,7 @@ ui.menu.addEventListener("click", (e) => {
   if (del) { deleteProject(Number(del.dataset.del)); renderMenu(); return; }
   const card = e.target.closest("[data-lesson], [data-sim], [data-project], [data-kit], [data-mini]");
   if (!card) return;
-  if (card.dataset.mini) go(card.dataset.mini === "code" ? "mini-yaver/code" : "mini-yaver");
+  if (card.dataset.mini) go(card.dataset.mini === "wiring" ? "mini-yaver" : `mini-yaver/${card.dataset.mini}`);
   else if (card.dataset.kit) go(`kit/${card.dataset.kit}`);
   else if (card.dataset.sim) go("sim");
   else if (card.dataset.project) go(`project/${card.dataset.project}`);
@@ -264,6 +266,7 @@ export function go(where, { push = true } = {}) {
   const project = where.startsWith("project/") ? projectPlan(where.slice(8)) : null;
   const kit = where.startsWith("kit/") ? kitPlan(where.slice(4)) : null;
   if (where === "sim") openSim();
+  else if (where === "mini-yaver/3d") openLesson(projectLesson(miniPlan()));
   else if (where === "mini-yaver" || where.startsWith("mini-yaver/")) openMini(where.slice(11));
   else if (kit) openLesson(projectLesson(kit));
   else if (project) openLesson(projectLesson(project, { change: (text) => plan(text, project) }));
@@ -301,8 +304,10 @@ function openLesson(l) {
   state = lesson.setup(ctx);
   ui.lesson.hidden = false;
   $(".ac-lesson-title").textContent = lesson.title;
-  $(".ac-lesson-module").textContent = lesson.kit ? `My kit · Lesson ${lesson.kit.n} of ${KIT.lessons.length}` : lesson.custom ? "Project tutor" : `Module ${lesson.moduleIndex + 1} · ${lesson.module.title}`;
-  ui.crumbs.innerHTML = `<button class="ac-link" data-act="menu">${lesson.kit ? "My kit" : lesson.custom ? "Projects" : "Course"}</button> › ${esc(lesson.title)}`;
+  $(".ac-lesson-module").textContent = lesson.mini ? "Mini Yaver · 3D build" : lesson.kit ? `My kit · Lesson ${lesson.kit.n} of ${KIT.lessons.length}` : lesson.custom ? "Project tutor" : `Module ${lesson.moduleIndex + 1} · ${lesson.module.title}`;
+  ui.crumbs.innerHTML = lesson.mini
+    ? `<button class="ac-link" data-act="menu">Academy</button> › <button class="ac-link" data-act="mini">Mini Yaver</button> › 3D build`
+    : `<button class="ac-link" data-act="menu">${lesson.kit ? "My kit" : lesson.custom ? "Projects" : "Course"}</button> › ${esc(lesson.title)}`;
   $(".ac-dots").innerHTML = lesson.steps.map((s, i) => `<button class="ac-dot" data-step="${i}" title="${s.title}"></button>`).join("");
   goStep(0);
 }
@@ -322,7 +327,7 @@ function goStep(i) {
   const last = stepIndex === lesson.steps.length - 1;
   const nextLesson = LESSONS[LESSONS.indexOf(lesson) + 1];
   const nextKit = lesson.kit ? KIT.lessons[lesson.kit.n] : null;
-  $("[data-act=next]").innerHTML = last ? (lesson.kit ? (nextKit ? `Next: ${esc(nextKit.title)} ▶` : "All lessons ▶") : lesson.custom ? "All projects ▶" : nextLesson ? "Next lesson ▶" : "To the simulator ▶") : "Next ▶";
+  $("[data-act=next]").innerHTML = last ? (lesson.mini ? "The code ▶" : lesson.kit ? (nextKit ? `Next: ${esc(nextKit.title)} ▶` : "All lessons ▶") : lesson.custom ? "All projects ▶" : nextLesson ? "Next lesson ▶" : "To the simulator ▶") : "Next ▶";
   if (step.camera) stage.flyTo(step.camera);
   step.enter(ctx, state);
   if (last && lesson.kit) markDone(`kit-${lesson.kit.id}`);
@@ -333,6 +338,7 @@ function next() {
   if (view === "mini") return mini.next();
   if (view !== "lesson") return;
   if (stepIndex < lesson.steps.length - 1) return goStep(stepIndex + 1);
+  if (lesson.mini) return go("mini-yaver/code");
   if (lesson.kit) { const nk = KIT.lessons[lesson.kit.n]; return go(nk ? `kit/${nk.id}` : "menu"); }
   if (lesson.custom) return go("menu");
   const nextLesson = LESSONS[LESSONS.indexOf(lesson) + 1];
@@ -347,6 +353,7 @@ root.addEventListener("click", (e) => {
   if (act === "next") next();
   else if (act === "prev") prev();
   else if (act === "menu") go("menu");
+  else if (act === "mini") go("mini-yaver");
   else if (act === "home") onHome();
   else if (act === "close-info") hideInfo();
 });
@@ -521,7 +528,7 @@ export function command(raw) {
   if (/\b(back|previous|last step)\b/.test(text) && !/\bhome\b/.test(text) && view === "lesson") { prev(); return "Going back."; }
   if (/\b(repeat|again|replay)\b/.test(text) && view === "lesson") { goStep(stepIndex); return "Once more."; }
   if (/\b(menu|all lessons|course map|lesson list)\b/.test(text)) { go("menu"); return "Here's the course."; }
-  if (/\bmini ?yaver\b/.test(text)) { go(/\bcode\b/.test(text) ? "mini-yaver/code" : "mini-yaver"); return "Opening the Mini Yaver tutorial."; }
+  if (/\bmini ?yaver\b/.test(text)) { go(/\bcode\b/.test(text) ? "mini-yaver/code" : /\b(map|flat|2d)\b/.test(text) ? "mini-yaver" : "mini-yaver/3d"); return "Opening the Mini Yaver tutorial."; }
   if (view === "mini" && /\b(the )?code\b/.test(text) && /\b(show|open|go to)\b/.test(text)) { mini.setTab("code"); return "Here's the code."; }
   if (view === "mini" && /\bwiring\b/.test(text)) { mini.setTab("wiring"); return "Here's the wiring."; }
   if (/\b(simulator|build (a|my|the|our) robot)\b/.test(text)) { go("sim"); return "Opening the robot simulator."; }

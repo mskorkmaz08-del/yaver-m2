@@ -4,13 +4,13 @@
 // the code line by line, and then runs the sketch against the circuit as
 // wired: buttons can be pressed, the buzzer plays, LEDs light, servos turn.
 import * as THREE from "three";
-import { arduinoUno, esp32, WIRE_COLORS } from "./parts.js?v=24";
-import { stopTweens } from "./anim.js?v=24";
-import { withBreadboard, benchPlan, benchWire, surfaces, holeName } from "./bench.js?v=24";
-import { buildPart } from "./project-parts.js?v=24";
-import { SketchRunner } from "./sketch.js?v=24";
-import { KIT_SHOP, KEYPAD_KEYS } from "./kit-parts.js?v=24";
-import { kitLibs, IR_KEYS, CARDS } from "./kit-sim.js?v=24";
+import { arduinoUno, esp32, WIRE_COLORS } from "./parts.js?v=25";
+import { stopTweens } from "./anim.js?v=25";
+import { withBreadboard, benchPlan, benchWire, surfaces, holeName } from "./bench.js?v=25";
+import { buildPart } from "./project-parts.js?v=25";
+import { SketchRunner } from "./sketch.js?v=25";
+import { KIT_SHOP, KEYPAD_KEYS } from "./kit-parts.js?v=25";
+import { kitLibs, IR_KEYS, CARDS } from "./kit-sim.js?v=25";
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -490,6 +490,10 @@ export function projectLesson(plan, hooks = {}) {
     text: `${md(st.text)}<p class="tip">▶ <b>Run the code</b> to try it here${st.try ? `: ${esc(st.try)}` : "."}</p>`,
     show: Infinity, lines: st.lines ?? [], code: st.code, stage: i,
   }));
+  if (plan.mini) {
+    steps.push({ title: "All wired", text: `<p>All 18 parts and every Uno pin. Turn the view to follow any wire: each end is labelled.</p><p class="tip">Next: how the code drives all of this.</p>`, show: Infinity, allTags: true, lines: [] });
+    return lessonObject(plan, hooks, steps, partAt, wireAt);
+  }
   if (plan.kit) {
     steps.push({ title: "Now on your real kit", text: plan.kit.footer, show: Infinity, code: plan.stages.at(-1).code, lines: [], last: true });
     return lessonObject(plan, hooks, steps, partAt, wireAt);
@@ -515,8 +519,9 @@ function lessonObject(plan, hooks, steps, partAt, wireAt) {
     id: plan.kit?.id ?? "project",
     title: plan.title,
     summary: plan.summary,
-    custom: !plan.kit,
+    custom: !plan.kit && !plan.mini,
     kit: plan.kit ?? null,
+    mini: plan.mini ?? null,
     module: { title: plan.kit ? "My kit" : "Your project" },
     moduleIndex: -1,
     setup(ctx) { return setup(ctx, plan, hooks); },
@@ -547,8 +552,13 @@ function setup(ctx, plan, hooks) {
   }
   for (const w of wires) ctx.add(w, { drop: false });
 
-  s.code = ctx.code(s.activeCode, { title: `${plan.title.replace(/[^\w]+/g, "_").replace(/^_|_$/g, "").slice(0, 32) || "project"}.ino` });
-  addCopyButton(ctx);
+  // Mini Yaver has no code panel: the 3D bench gets the whole width, and its
+  // code has its own tour.
+  if (plan.mini) s.code = { set() {}, highlight() {} };
+  else {
+    s.code = ctx.code(s.activeCode, { title: `${plan.title.replace(/[^\w]+/g, "_").replace(/^_|_$/g, "").slice(0, 32) || "project"}.ino` });
+    addCopyButton(ctx);
+  }
   s.runner = new SketchRunner(s.circuit.hardware((line) => serial(ctx, s, line)));
 
   // Buttons: number keys press them while held.
@@ -696,7 +706,7 @@ function enterStep(ctx, s, st) {
     const box = new THREE.Box3().setFromObject(obj);
     ctx.label(obj, esc(obj.userData.projectPart.label), { offset: V(0, box.max.y - obj.position.y + 0.3, 0), dx: 30, dy: -40 });
   }
-  for (const i of freshWires) {
+  for (const i of s.plan.pinTags ? [] : freshWires) {
     const w = s.plan.wires[i];
     const boardEnd = w.from.part === "BOARD" ? 0 : w.to.part === "BOARD" ? 1 : -1;
     if (boardEnd < 0 || labels++ >= 10) continue;
@@ -721,8 +731,8 @@ function enterStep(ctx, s, st) {
     ctx.camera({ target: [c.x, 0, c.z], theta: 0.12, phi: 0.7, radius: Math.min(Math.max(size.x, size.z) * 2.2 + 12, 40) });
   } else if (!box.isEmpty()) {
     const c = box.getCenter(V(0, 0, 0)), size = box.getSize(V(0, 0, 0));
-    const radius = Math.min(Math.max(Math.max(size.x, size.z) * 1.25 + 12, 16), 80);
-    ctx.camera({ target: [c.x, 0, c.z], theta: 0.12, phi: st.lines ? 0.75 : 0.88, radius });
+    const radius = s.plan.pinTags ? Math.min(Math.max(Math.max(size.x, size.z) * 2.1 + 10, 14), 160) : Math.min(Math.max(Math.max(size.x, size.z) * 1.25 + 12, 16), 80);
+    ctx.camera({ target: [c.x, 0, c.z], theta: 0.12, phi: s.plan.pinTags ? 0.5 : st.lines ? 0.75 : 0.88, radius });
   }
 
   if (st.code !== undefined && st.code !== s.activeCode) {
@@ -731,7 +741,9 @@ function enterStep(ctx, s, st) {
     s.code.set(st.code);
     serial(ctx, s, null);
   }
-  s.code.highlight(st.lines ?? []);
+  s.code.highlight(st.lines ?? st.plan?.pinLines ?? []);
+  if (s.plan.pinTags && st.plan) pinTags(ctx, s, st);
+  if (s.plan.mini) return;
   runControls(ctx, s);
   if (st.last) changeBox(ctx, s);
 
@@ -743,6 +755,44 @@ function enterStep(ctx, s, st) {
     if (p?.type !== "button") return null;
     press(s, p.id, true);
     return { move() {}, end() { press(s, p.id, false); } };
+  });
+}
+
+// Pin names at both ends of this step's wires: "D13" on the Uno (yellow),
+// "LCD RS" on a part (blue). Rails are left out. Click a wire in the step's
+// list to keep only its two names and turn the view to it.
+function pinTags(ctx, s, st) {
+  const name = (e) => {
+    if (e.part === "BOARD") return e.pin;
+    const p = s.plan.parts.find((q) => q.id === e.part);
+    return p?.type === "breadboard" ? null : `${p?.tag ?? p?.label ?? e.part} ${e.pin === "-" ? "−" : e.pin}`;
+  };
+  const seen = new Set();
+  const tags = st.plan.wires.map((w) => {
+    const wire = s.plan.wires[w], ends = s.wires[w].userData.ends;
+    return [wire.from, wire.to].flatMap((e, k) => {
+      const text = name(e), key = `${e.part}.${e.pin}`;
+      if (!text || seen.has(key)) return [];
+      seen.add(key);
+      const board = e.part === "BOARD";
+      return [ctx.label(ends[k].clone().add(V(0, 0.15, 0)), esc(text), { auto: true, cls: `pin-tag ${board ? "board" : ""}` })];
+    });
+  });
+  const items = [...ctx.ui.text.querySelectorAll(".pj-wires li")];
+  let solo = -1;
+  items.forEach((li, j) => {
+    li.classList.add("pj-solo");
+    li.title = "Show only this wire";
+    li.addEventListener("click", () => {
+      solo = solo === j ? -1 : j;
+      tags.forEach((list, k) => list.forEach((t) => t.el.classList.toggle("off", solo >= 0 && k !== solo)));
+      items.forEach((x, k) => x.classList.toggle("on", k === solo));
+      if (solo < 0) return;
+      const [a, b] = s.wires[st.plan.wires[solo]].userData.ends;
+      const c = a.clone().add(b).multiplyScalar(0.5);
+      ctx.camera({ target: [c.x, 0, c.z], theta: 0.12, phi: 0.5, radius: Math.min(Math.max(a.distanceTo(b) * 1.6 + 8, 10), 80) });
+      ctx.focus(s.wires[st.plan.wires[solo]]);
+    });
   });
 }
 
