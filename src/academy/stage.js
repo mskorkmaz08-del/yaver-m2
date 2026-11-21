@@ -3,7 +3,7 @@
 // picking. Units are centimetres, so parts are modelled at their real size.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { tween, ease } from "./anim.js?v=24";
+import { tween, ease } from "./anim.js?v=25";
 
 const tmp = new THREE.Vector3();
 
@@ -321,12 +321,14 @@ class Labels {
 
   // `anchor` is an Object3D (its origin, plus `offset` in its own space) or a
   // Vector3. `dx`, `dy` move the label away from the point, in pixels.
-  add(anchor, html, { dx = 40, dy = -40, cls = "", offset = null } = {}) {
+  // `auto` labels are centred over their point and lifted as far as needed
+  // so they never cover each other (pin names in a row of header pins).
+  add(anchor, html, { dx = 40, dy = -40, cls = "", offset = null, auto = false } = {}) {
     const el = document.createElement("div");
     el.className = `ac-label ${cls}`;
     el.innerHTML = html;
     this.el.appendChild(el);
-    const item = { anchor, offset, el, dx, dy, shown: 0, size: null };
+    const item = { anchor, offset, el, dx, dy, shown: 0, size: null, auto };
     this.items.add(item);
     requestAnimationFrame(() => el.classList.add("in"));
     return {
@@ -353,6 +355,7 @@ class Labels {
     // once (and again if its text changes), all of them before any moves.
     for (const item of this.items) if (!item.size || !item.size[0]) item.size = [item.el.offsetWidth, item.el.offsetHeight];
     const lines = [];
+    const autos = [], taken = [];
     for (const item of this.items) {
       if (item.anchor.isObject3D) {
         world.copy(item.offset ?? new THREE.Vector3());
@@ -363,13 +366,32 @@ class Labels {
       const visibility = visible ? "visible" : "hidden";
       if (item.el.style.visibility !== visibility) item.el.style.visibility = visibility;
       if (!visible) continue;
+      if (item.auto) { if (!item.el.classList.contains("off")) autos.push({ item, x: p.x, y: p.y }); continue; }
       const lx = p.x + item.dx;
       const ly = p.y + item.dy;
       const [w, h] = item.size;
       const left = item.dx >= 0 ? lx : lx - w;
       const transform = `translate(${left}px, ${ly - h / 2}px)`;
       if (item.el.style.transform !== transform) item.el.style.transform = transform;
+      taken.push([left, ly - h / 2, left + w, ly + h / 2]);
       lines.push(Math.round(p.x * 2), Math.round(p.y * 2), Math.round(lx * 2), Math.round(ly * 2));
+    }
+    // Auto labels, left to right: each takes the lowest free spot above its
+    // point (or below, when the top is crowded).
+    autos.sort((a, b) => a.x - b.x || a.y - b.y);
+    const hits = (r) => taken.some((t) => r[0] < t[2] + 3 && r[2] > t[0] - 3 && r[1] < t[3] + 2 && r[3] > t[1] - 2);
+    for (const { item, x, y } of autos) {
+      const [w, h] = item.size;
+      let ly = y - 22, r;
+      for (let k = 0; k < 24; k++) {
+        ly = k < 16 ? y - 22 - k * (h + 3) : y + 22 + (k - 16) * (h + 3);
+        r = [x - w / 2, ly - h / 2, x + w / 2, ly + h / 2];
+        if (!hits(r)) break;
+      }
+      taken.push(r);
+      const transform = `translate(${r[0]}px, ${r[1]}px)`;
+      if (item.el.style.transform !== transform) item.el.style.transform = transform;
+      lines.push(Math.round(x * 2), Math.round(y * 2), Math.round(x * 2), Math.round((ly + (ly < y ? h / 2 : -h / 2)) * 2));
     }
     // The leader lines are redrawn only when one moved.
     const key = lines.join();

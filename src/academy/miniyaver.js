@@ -295,7 +295,8 @@ export class MiniYaver {
       <div class="my-head">
         <div><h1>Mini Yaver</h1><p class="ac-lead">Your Uno as a desk AI: ask with the remote or a card, the Mac asks the AI, the answer scrolls on the LCD. 18 parts, all 20 pins.</p></div>
         <div class="my-tabs" role="tablist">
-          <button class="ac-btn ${this.tab === "wiring" ? "primary" : ""}" data-my="tab:wiring" role="tab">1 · Wiring</button>
+          <a class="ac-btn" href="#academy/mini-yaver/3d">1 · 3D build</a>
+          <button class="ac-btn ${this.tab === "wiring" ? "primary" : ""}" data-my="tab:wiring" role="tab">Wiring map</button>
           <button class="ac-btn ${this.tab === "code" ? "primary" : ""}" data-my="tab:code" role="tab">2 · Code</button>
           <a class="ac-btn ghost" href="${FILES_URL}MiniYaver/MiniYaver.ino" download>⬇ Sketch</a>
           <a class="ac-btn ghost" href="${FILES_URL}mini_yaver_bridge.py" download>⬇ Mac bridge</a>
