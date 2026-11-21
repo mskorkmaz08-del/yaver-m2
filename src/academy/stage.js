@@ -3,7 +3,7 @@
 // picking. Units are centimetres, so parts are modelled at their real size.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { tween, ease } from "./anim.js?v=25";
+import { tween, ease, stopTweens } from "./anim.js?v=26";
 
 const tmp = new THREE.Vector3();
 
@@ -147,17 +147,42 @@ export class Stage {
     this.pose.phi = THREE.MathUtils.clamp(this.pose.phi + dPhi, 0.08, Math.PI / 2 - 0.03);
   }
 
-  zoomBy(f) {
-    this.pose.radius = THREE.MathUtils.clamp(this.pose.radius * f, 4, 260);
+  // Zooms by `f` (below 1 is closer). With a screen point, the thing under
+  // it stays under it, so you zoom into exactly what you point at.
+  zoomBy(f, sx, sy) {
+    const r0 = this.pose.radius;
+    const r1 = THREE.MathUtils.clamp(r0 * f, 2.5, 260);
+    if (sx !== undefined) {
+      stopTweens(this.pose);
+      const hit = this.pick(sx, sy, [this.root]);
+      const p = hit?.point ?? this.onPlane(sx, sy, 0);
+      if (p) {
+        const k = 1 - r1 / r0;
+        this.pose.x += (p.x - this.pose.x) * k;
+        this.pose.y += (p.y - this.pose.y) * k;
+        this.pose.z += (p.z - this.pose.z) * k;
+      }
+    }
+    this.pose.radius = r1;
   }
 
-  // Slides the point the camera looks at across the bench.
+  // Slides the view across the bench by screen pixels: what was under the
+  // pointer stays under it, at any zoom or angle.
   panBy(dx, dy) {
-    const right = tmp.set(Math.cos(this.pose.theta), 0, -Math.sin(this.pose.theta));
-    const k = this.pose.radius * 0.0016;
-    this.pose.x -= right.x * dx * k;
-    this.pose.z -= right.z * dx * k;
-    this.pose.y = THREE.MathUtils.clamp(this.pose.y + dy * k, -5, 60);
+    stopTweens(this.pose);
+    const { theta, phi, radius } = this.pose;
+    const k = (2 * radius * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2))) / (this.height || window.innerHeight);
+    const fwd = k / Math.max(Math.cos(phi), 0.35);
+    this.pose.x -= Math.cos(theta) * dx * k + Math.sin(theta) * dy * fwd;
+    this.pose.z -= -Math.sin(theta) * dx * k + Math.cos(theta) * dy * fwd;
+  }
+
+  // Glides to frame an object: its middle, close enough to fill the view.
+  flyToObject(obj, ms = 700) {
+    const box = new THREE.Box3().setFromObject(obj);
+    if (box.isEmpty()) return;
+    const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+    return this.flyTo({ target: [c.x, c.y, c.z], radius: THREE.MathUtils.clamp(Math.max(size.x, size.y, size.z) * 2.4 + 3, 4, 120) }, ms);
   }
 
   // ---- Screen <-> world -------------------------------------------------------
