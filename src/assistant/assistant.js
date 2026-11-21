@@ -1,12 +1,12 @@
 // Yaver, the talking assistant. With a Gemini key: a real-time voice
 // conversation through Gemini Live (live.js). Without one: wake word or button
 // → speech to text → studio command or language model → spoken answer.
-import { Brain } from "./brain.js?v=23";
-import { Listener, Speaker } from "./voice.js?v=23";
-import { parseCommand, navCommand, describeScene, projectRequest } from "./commands.js?v=23";
-import { geminiSettings, saveKey, forgetKey } from "./keys.js?v=23";
-import { LiveSession } from "./live.js?v=23";
-import { isOn, setOn, onSwitch, switchButton } from "../switches.js?v=23";
+import { Brain } from "./brain.js?v=24";
+import { Listener, Speaker } from "./voice.js?v=24";
+import { parseCommand, navCommand, describeScene, projectRequest } from "./commands.js?v=24";
+import { geminiSettings, saveKey, forgetKey } from "./keys.js?v=24";
+import { LiveSession } from "./live.js?v=24";
+import { isOn, setOn, onSwitch, switchButton } from "../switches.js?v=24";
 
 const HISTORY_KEY = "yaver-chat";
 const HISTORY_TURNS = 12; // messages kept for context (the local model's window is small)

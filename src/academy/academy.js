@@ -3,20 +3,21 @@
 // it is opened from Yaver's home screen. Hands (through the webcam) or the
 // mouse drive everything: pinch to press buttons and grab parts, move to
 // turn the view, both hands to zoom, and an open-hand swipe to change step.
-import { Stage } from "./stage.js?v=23";
-import { stepTweens } from "./anim.js?v=23";
-import { LessonContext } from "./course.js?v=23";
-import { ELECTRONICS } from "./lessons-electronics.js?v=23";
-import { ARDUINO } from "./lessons-arduino.js?v=23";
-import { ESP32 } from "./lessons-esp32.js?v=23";
-import { Simulator, buildRobot } from "./sim.js?v=23";
-import { HandInput } from "../handinput.js?v=23";
-import { projectLesson } from "./project.js?v=23";
-import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=23";
-import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=23";
-import { PIANO } from "./project-examples.js?v=23";
-import { KIT, kitPlan } from "./kit.js?v=23";
-import { isOn, onSwitch } from "../switches.js?v=23";
+import { Stage } from "./stage.js?v=24";
+import { stepTweens } from "./anim.js?v=24";
+import { LessonContext } from "./course.js?v=24";
+import { ELECTRONICS } from "./lessons-electronics.js?v=24";
+import { ARDUINO } from "./lessons-arduino.js?v=24";
+import { ESP32 } from "./lessons-esp32.js?v=24";
+import { Simulator, buildRobot } from "./sim.js?v=24";
+import { HandInput } from "../handinput.js?v=24";
+import { projectLesson } from "./project.js?v=24";
+import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=24";
+import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=24";
+import { PIANO } from "./project-examples.js?v=24";
+import { KIT, kitPlan } from "./kit.js?v=24";
+import { isOn, onSwitch } from "../switches.js?v=24";
+import { MiniYaver } from "./miniyaver.js?v=24";
 
 const VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 export const MODULES = [ELECTRONICS, ARDUINO, ESP32];
@@ -58,12 +59,13 @@ const ui = {
 const stage = new Stage($(".ac-stage"));
 const canvas = stage.renderer.domElement;
 const sim = new Simulator(stage, root);
+const mini = new MiniYaver(root);
 
 let ctx = null;      // the running lesson's context
 let lesson = null;
 let state = null;
 let stepIndex = 0;
-let view = "menu";   // "menu" | "lesson" | "sim" (a project plays as a lesson)
+let view = "menu";   // "menu" | "lesson" | "sim" | "mini" (a project plays as a lesson)
 let planning = null; // { request, status, error, needKey } while the project tutor works
 let showcase = null; // the robot turning on the menu
 let active = false;
@@ -134,9 +136,22 @@ function kitBlock() {
     </div>`;
 }
 
+// The Mini Yaver project (his Uno desk AI): wiring and code tutorial.
+function miniBlock() {
+  return `
+    <div class="kit-block">
+      <h2><span>Project</span>Mini Yaver: AI on your Uno</h2>
+      <div class="ac-cards">
+        <button class="ac-card ac-sim-card" data-mini="wiring"><b class="ac-num">🔌</b><span><strong>1. Wire it</strong><small>Clickable diagram: 18 parts, all 20 pins, built up in 8 steps.</small></span></button>
+        <button class="ac-card ac-sim-card" data-mini="code"><b class="ac-num">💻</b><span><strong>2. Understand the code</strong><small>The real sketch and Mac bridge, 7 short sections.</small></span></button>
+      </div>
+    </div>`;
+}
+
 function renderMenu() {
   let n = 0;
   ui.menu.innerHTML = `
+    ${miniBlock()}
     ${kitBlock()}
     ${projectBlock()}
     <h1>Robotics course</h1>
@@ -161,9 +176,10 @@ ui.menu.addEventListener("click", (e) => {
   if (chip) { plan(chip.dataset.example); return; }
   const del = e.target.closest("[data-del]");
   if (del) { deleteProject(Number(del.dataset.del)); renderMenu(); return; }
-  const card = e.target.closest("[data-lesson], [data-sim], [data-project], [data-kit]");
+  const card = e.target.closest("[data-lesson], [data-sim], [data-project], [data-kit], [data-mini]");
   if (!card) return;
-  if (card.dataset.kit) go(`kit/${card.dataset.kit}`);
+  if (card.dataset.mini) go(card.dataset.mini === "code" ? "mini-yaver/code" : "mini-yaver");
+  else if (card.dataset.kit) go(`kit/${card.dataset.kit}`);
   else if (card.dataset.sim) go("sim");
   else if (card.dataset.project) go(`project/${card.dataset.project}`);
   else go(card.dataset.lesson);
@@ -231,6 +247,7 @@ function teardown() {
   ctx?.dispose();
   ctx = lesson = state = null;
   if (sim.active) sim.close();
+  mini.close();
   showcase = null;
   hideInfo();
   stage.clear();
@@ -247,6 +264,7 @@ export function go(where, { push = true } = {}) {
   const project = where.startsWith("project/") ? projectPlan(where.slice(8)) : null;
   const kit = where.startsWith("kit/") ? kitPlan(where.slice(4)) : null;
   if (where === "sim") openSim();
+  else if (where === "mini-yaver" || where.startsWith("mini-yaver/")) openMini(where.slice(11));
   else if (kit) openLesson(projectLesson(kit));
   else if (project) openLesson(projectLesson(project, { change: (text) => plan(text, project) }));
   else if (LESSONS.some((l) => l.id === where)) openLesson(LESSONS.find((l) => l.id === where));
@@ -268,6 +286,12 @@ function openSim() {
   view = "sim";
   ui.crumbs.innerHTML = `<button class="ac-link" data-act="menu">Course</button> › Robot simulator`;
   sim.open();
+}
+
+function openMini(tab) {
+  view = "mini";
+  ui.crumbs.innerHTML = `<button class="ac-link" data-act="menu">Academy</button> › Mini Yaver`;
+  mini.open(tab);
 }
 
 function openLesson(l) {
@@ -306,6 +330,7 @@ function goStep(i) {
 }
 
 function next() {
+  if (view === "mini") return mini.next();
   if (view !== "lesson") return;
   if (stepIndex < lesson.steps.length - 1) return goStep(stepIndex + 1);
   if (lesson.kit) { const nk = KIT.lessons[lesson.kit.n]; return go(nk ? `kit/${nk.id}` : "menu"); }
@@ -313,7 +338,7 @@ function next() {
   const nextLesson = LESSONS[LESSONS.indexOf(lesson) + 1];
   go(nextLesson ? nextLesson.id : "sim");
 }
-function prev() { if (view === "lesson" && stepIndex > 0) goStep(stepIndex - 1); }
+function prev() { if (view === "mini") return mini.prev(); if (view === "lesson" && stepIndex > 0) goStep(stepIndex - 1); }
 
 root.addEventListener("click", (e) => {
   const act = e.target.closest("[data-act]")?.dataset.act;
@@ -496,6 +521,9 @@ export function command(raw) {
   if (/\b(back|previous|last step)\b/.test(text) && !/\bhome\b/.test(text) && view === "lesson") { prev(); return "Going back."; }
   if (/\b(repeat|again|replay)\b/.test(text) && view === "lesson") { goStep(stepIndex); return "Once more."; }
   if (/\b(menu|all lessons|course map|lesson list)\b/.test(text)) { go("menu"); return "Here's the course."; }
+  if (/\bmini ?yaver\b/.test(text)) { go(/\bcode\b/.test(text) ? "mini-yaver/code" : "mini-yaver"); return "Opening the Mini Yaver tutorial."; }
+  if (view === "mini" && /\b(the )?code\b/.test(text) && /\b(show|open|go to)\b/.test(text)) { mini.setTab("code"); return "Here's the code."; }
+  if (view === "mini" && /\bwiring\b/.test(text)) { mini.setTab("wiring"); return "Here's the wiring."; }
   if (/\b(simulator|build (a|my|the|our) robot)\b/.test(text)) { go("sim"); return "Opening the robot simulator."; }
   const kitHit = /\b(my kit|kit lesson|arduino kit)\b/.test(text) ? null : KIT.lessons.find((l) => l.say && new RegExp(`\\b(${l.say})\\b`).test(text) && /\b(open|show|lesson|teach|learn|start)\b/.test(text));
   if (kitHit) { go(`kit/${kitHit.id}`); return `Opening the ${kitHit.title} lesson.`; }
@@ -515,6 +543,7 @@ export function command(raw) {
 
 // One line describing where he is, for the language model.
 export function describe() {
+  if (view === "mini") return mini.describe();
   if (view === "lesson" && (lesson.custom || lesson.kit)) return lesson.describe(stepIndex);
   if (view === "lesson") return `He is in the Robotics Academy, lesson "${lesson.title}", step ${stepIndex + 1} of ${lesson.steps.length}: "${lesson.steps[stepIndex].title}".`;
   if (view === "sim") return `He is in the Robotics Academy's robot simulator, on the ${sim.mode} tab.`;

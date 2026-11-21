@@ -5,9 +5,9 @@
 // the board's header to free holes, rails and module pins, and lie over
 // whatever is under them instead of looping through the air.
 import * as THREE from "three";
-import { arduinoUno, esp32, pinWorld, MAT } from "./parts.js?v=23";
-import { buildPart } from "./project-parts.js?v=23";
-import { dispose } from "./stage.js?v=23";
+import { arduinoUno, esp32, pinWorld, MAT } from "./parts.js?v=24";
+import { buildPart } from "./project-parts.js?v=24";
+import { dispose } from "./stage.js?v=24";
 
 const P = 0.254; // 0.1 inch between holes
 const Z0 = P / 2; // the cell grid sits half a pitch off centre in z, like the holes

@@ -281,3 +281,97 @@ i.band { border-radius: 2px; width: 8px; height: 14px; vertical-align: -3px; mar
 .pj-plugs li { padding: 2px 0; }
 .pj-wires li.pj-nowire b { color: var(--muted); }
 .pj-wires li.pj-nowire .pj-swatch { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35) inset; border: 1px dashed rgba(255, 255, 255, 0.5); }
+
+/* ---- Mini Yaver tutorial: wiring diagram and code tour --------------------------- */
+
+.my-tut {
+  position: fixed; left: 16px; right: 16px; top: 72px; bottom: 16px;
+  display: flex; flex-direction: column; gap: 10px; z-index: 4;
+  background: rgba(10, 14, 22, 0.97);
+}
+#academy:has(.my-tut:not([hidden])) .ac-hint { display: none; }
+.my-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.my-head h1 { margin: 0 0 2px; }
+.my-head .ac-lead { margin: 0; font-size: 13px; max-width: 640px; }
+.my-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.my-tabs a { text-decoration: none; color: var(--text); border: 1px solid var(--line); }
+.my-body { flex: 1; min-height: 0; display: grid; gap: 14px; }
+/* The side column stops above Yaver's chat in the bottom-right corner. */
+.my-wiring, .my-code { grid-template-columns: minmax(0, 1fr) 330px; }
+.my-side { overflow-y: auto; padding-right: 4px; font-size: 13.5px; display: flex; flex-direction: column; align-self: start; max-height: calc(100vh - 72px - 16px - 90px - 290px); min-height: 200px; }
+.my-main { min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.my-main .my-src { flex: 1; }
+.my-side h2 { margin-top: 10px; }
+.my-side p { margin: 6px 0; }
+.my-side .ac-nav { margin-top: auto; padding-top: 12px; }
+
+.my-diagram { min-height: 0; display: grid; place-items: center; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.my-svg { width: 100%; height: 100%; max-height: 100%; font-family: inherit; }
+.my-uno rect:first-child { fill: #0f5c7a; stroke: #4cc9ff; stroke-width: 1.5; }
+.my-usb { fill: #c9d1d9; }
+.my-cable { stroke: #adb5bd; stroke-width: 5; fill: none; stroke-linecap: round; }
+.my-uno-name { fill: #fff; font-size: 16px; font-weight: 700; letter-spacing: 0.15em; }
+.my-uno-sub { fill: #9fd8f0; font-size: 9px; letter-spacing: 0.12em; }
+.my-pin { cursor: pointer; }
+.my-pin rect { fill: #1b1f27; stroke: #5d6b7c; }
+.my-pin rect.my-hit { fill: transparent; stroke: none; }
+.my-pin text { fill: #cfe8ff; font-size: 9px; font-weight: 600; }
+.my-pin.used rect:not(.my-hit) { fill: #2b3442; stroke: #8fd0ff; }
+.my-pin.usb rect:not(.my-hit) { fill: #3a3a3a; stroke: #777; stroke-dasharray: 2 2; }
+.my-pin.hot rect:not(.my-hit) { fill: #ffd166; stroke: #fff; }
+.my-pin:hover rect:not(.my-hit) { stroke: #fff; stroke-width: 2; }
+.my-wire { fill: none; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; opacity: 0.22; transition: opacity 0.2s; }
+.my-wire.on { opacity: 1; stroke-width: 3.5; }
+.my-part { cursor: pointer; transition: opacity 0.2s; }
+.my-part > rect { fill: rgba(20, 28, 40, 0.95); stroke-width: 1.5; }
+.my-part.on > rect { fill: rgba(40, 60, 80, 0.98); stroke-width: 3; }
+.my-part.ghost { opacity: 0.28; }
+.my-part.ghost > rect { stroke-dasharray: 5 4; }
+.my-part:hover > rect { stroke-width: 3; }
+.my-name { fill: #fff; font-size: 13px; font-weight: 600; pointer-events: none; }
+.my-pinlbl { fill: #cfe8ff; font-size: 8.5px; pointer-events: none; }
+.my-note { fill: #e599f7; font-size: 9px; }
+.my-rails line, .my-rails path { stroke-width: 3; opacity: 0.25; fill: none; }
+.my-rails text { fill: var(--muted); font-size: 10px; }
+.my-rails.on line, .my-rails.on path { opacity: 1; stroke-width: 4; }
+
+.my-steps { display: flex; flex-wrap: wrap; gap: 5px; }
+.my-stepdot { width: 30px; height: 30px; padding: 0; border-radius: 50%; font-size: 12px; font-weight: 700; }
+.my-stepdot.on { background: rgba(76, 201, 255, 0.3); border-color: var(--accent); color: #fff; }
+.my-stepdot.done { background: rgba(6, 214, 160, 0.2); border-color: #06d6a0; color: #06d6a0; }
+.my-checks { list-style: none; padding: 0 !important; margin: 8px 0; display: grid; gap: 4px; }
+.my-checks label { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; font-size: 13px; }
+.my-checks input { accent-color: #06d6a0; margin-top: 2px; }
+.my-info { margin-top: 6px; }
+.my-list { font-size: 13px; }
+.my-list small { color: var(--muted); }
+.my-pwr { color: var(--muted); }
+
+.my-secs { display: flex; flex-wrap: wrap; gap: 5px; }
+.my-sec { display: flex; gap: 6px; align-items: center; padding: 5px 10px; border-radius: 999px; font-size: 12.5px; }
+.my-sec b { color: var(--accent); min-width: 14px; }
+.my-sec.on { background: rgba(76, 201, 255, 0.18); border-color: var(--accent); color: #fff; }
+.my-notes { display: grid; gap: 6px; padding-left: 0 !important; list-style: none; counter-reset: n; }
+.my-notes li { counter-increment: n; position: relative; padding: 7px 10px 7px 32px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; background: rgba(76, 201, 255, 0.05); }
+.my-notes li::before { content: counter(n); position: absolute; left: 9px; top: 7px; color: var(--accent); font-weight: 700; }
+.my-notes li:hover { border-color: var(--line); }
+.my-notes li.on { border-color: #ffd166; background: rgba(255, 209, 102, 0.1); }
+.my-src {
+  position: relative; margin: 0; overflow: auto; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 0; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.55; color: #cfe8ff;
+}
+.my-ln { display: block; padding: 0 14px 0 0; white-space: pre; transition: background 0.2s, opacity 0.2s; }
+.my-ln i { display: inline-block; width: 44px; padding-right: 12px; text-align: right; color: #4d5a6b; font-style: normal; user-select: none; }
+.my-ln.mark { background: rgba(76, 201, 255, 0.08); }
+.my-ln.hot { background: rgba(255, 209, 102, 0.2); color: #fff; }
+.my-ln.dim { opacity: 0.45; }
+
+@media (max-width: 860px) {
+  .my-tut { left: 8px; right: 8px; overflow-y: auto; }
+  .my-body { display: flex; flex-direction: column; flex: none; }
+  .my-diagram { min-height: 260px; }
+  .my-src { max-height: 60vh; }
+  .my-side { max-height: none; }
+  .my-code .my-side { order: 0; }
+}
+.my-side .ac-nav { position: sticky; bottom: 0; background: rgba(10, 14, 22, 0.97); padding-bottom: 2px; }
