@@ -22,6 +22,11 @@ body:not([data-view="academy"]) .academy-only { display: none !important; }
   border-radius: 999px;
   color: var(--text);
 }
+.open-gym {
+  top: 112px; right: 16px; display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px 8px 10px; border-radius: 999px; color: var(--text); text-decoration: none;
+}
+.open-gym svg { width: 20px; height: 20px; fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
 .open-academy svg {
   width: 20px; height: 20px; fill: none; stroke: var(--accent);
   stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round;
