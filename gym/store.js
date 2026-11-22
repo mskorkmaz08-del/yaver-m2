@@ -72,7 +72,7 @@ export const store = {
 };
 
 const SKEY = "calicoach.settings";
-const DEFAULTS = { voice: true, voiceCues: true, mirror: true, model: "full", facing: "user", startEx: "auto", sbUrl: "", sbKey: "", sbEmail: "", autoUpload: true };
+const DEFAULTS = { showCamera: false, voice: true, voiceCues: true, mirror: true, model: "full", facing: "user", startEx: "auto", sbUrl: "", sbKey: "", sbEmail: "", autoUpload: true };
 export const settings = {
   get() {
     try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(SKEY) || "{}") }; } catch { return { ...DEFAULTS }; }

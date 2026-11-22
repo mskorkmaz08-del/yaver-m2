@@ -175,3 +175,8 @@ tr.reprow:active { background: var(--panel2); }
 .field span { display: block; color: var(--muted); font-size: 13px; margin-bottom: 4px; }
 input[type=url], input[type=password], input[type=email], input[type=text] { width: 100%; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; font-size: 16px; }
 #sbCodeRow input { flex: 1; }
+
+.mini.skel { pointer-events: auto; border: 1px solid rgba(255, 255, 255, 0.14); font: inherit; font-size: 13px; }
+.mini.skel.on { color: var(--accent); border-color: var(--accent); }
+/* Hidden camera picture: still playing (pose tracking needs its frames), just not seen. */
+#video.unseen { opacity: 0; }

@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=3">
   <script type="importmap">
     { "imports": { "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs" } }
   </script>
@@ -32,6 +32,7 @@
               <span class="dot" id="exDot"></span><span id="exName">Detecting…</span><span class="chev">▾</span>
             </button>
             <div class="hud-right">
+              <button id="btnCam" class="mini skel" aria-pressed="false" title="Show or hide the camera picture behind the skeleton">Camera</button>
               <span id="fps" class="mini"></span>
               <span id="timer" class="mini">0:00</span>
             </div>
@@ -123,6 +124,7 @@
           <label class="toggle"><input type="checkbox" id="setVoice" checked><span>Voice: count reps out loud</span></label>
           <label class="toggle"><input type="checkbox" id="setVoiceCues" checked><span>Voice: form cues</span></label>
           <label class="toggle"><input type="checkbox" id="setMirror" checked><span>Mirror the front camera</span></label>
+          <label class="toggle"><input type="checkbox" id="setCam"><span>Show the camera picture while training (off: just your skeleton, fewer distractions)</span></label>
           <div class="row"><label for="setModel">Pose model</label>
             <select id="setModel"><option value="full">Full (accurate)</option><option value="lite">Lite (faster, older phones)</option><option value="heavy">Heavy (most accurate, slow)</option></select>
           </div>
@@ -187,6 +189,6 @@
   <div id="sheetBack" class="sheet-back" hidden></div>
   <div id="sheet" class="sheet" hidden role="dialog" aria-modal="true"><div class="grab"></div><div id="sheetBody"></div></div>
 
-  <script type="module" src="app.js?v=2"></script>
+  <script type="module" src="app.js?v=3"></script>
 </body>
 </html>
