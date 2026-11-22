@@ -178,3 +178,5 @@ input[type=url], input[type=password], input[type=email], input[type=text] { wid
 
 .mini.skel { pointer-events: auto; border: 1px solid rgba(255, 255, 255, 0.14); font: inherit; font-size: 13px; }
 .mini.skel.on { color: var(--accent); border-color: var(--accent); }
+/* Hidden camera picture: still playing (pose tracking needs its frames), just not seen. */
+#video.unseen { opacity: 0; }

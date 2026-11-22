@@ -32,7 +32,7 @@
               <span class="dot" id="exDot"></span><span id="exName">Detecting…</span><span class="chev">▾</span>
             </button>
             <div class="hud-right">
-              <button id="btnSkel" class="mini skel" aria-pressed="false" title="Show or hide the skeleton on the picture">Skeleton</button>
+              <button id="btnCam" class="mini skel" aria-pressed="false" title="Show or hide the camera picture behind the skeleton">Camera</button>
               <span id="fps" class="mini"></span>
               <span id="timer" class="mini">0:00</span>
             </div>
@@ -124,7 +124,7 @@
           <label class="toggle"><input type="checkbox" id="setVoice" checked><span>Voice: count reps out loud</span></label>
           <label class="toggle"><input type="checkbox" id="setVoiceCues" checked><span>Voice: form cues</span></label>
           <label class="toggle"><input type="checkbox" id="setMirror" checked><span>Mirror the front camera</span></label>
-          <label class="toggle"><input type="checkbox" id="setSkel"><span>Show the skeleton on the live picture</span></label>
+          <label class="toggle"><input type="checkbox" id="setCam"><span>Show the camera picture while training (off: just your skeleton, fewer distractions)</span></label>
           <div class="row"><label for="setModel">Pose model</label>
             <select id="setModel"><option value="full">Full (accurate)</option><option value="lite">Lite (faster, older phones)</option><option value="heavy">Heavy (most accurate, slow)</option></select>
           </div>

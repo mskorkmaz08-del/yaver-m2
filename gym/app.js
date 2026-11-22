@@ -107,8 +107,8 @@ function bindSetup() {
   $("#btnEndSet").addEventListener("click", () => { if (app.run) app.run.coach.endSet(app.run.t); });
   $("#btnFinish").addEventListener("click", () => finishWorkout());
   $("#btnFlip").addEventListener("click", flipCamera);
-  $("#btnSkel").addEventListener("click", () => setSkeleton(!app.cfg.skeleton));
-  syncSkelButton();
+  $("#btnCam").addEventListener("click", () => setShowCamera(!app.cfg.showCamera));
+  syncCamButton();
   $("#exPill").addEventListener("click", pickExercise);
   $("#sheetBack").addEventListener("click", closeSheet);
 }
@@ -183,7 +183,7 @@ async function startWorkout({ teach = null }) {
   } finally {
     $("#btnStart").disabled = false;
   }
-  syncSkelButton();
+  syncCamButton();
   if (teach) beginTeach(run, teach);
   requestWakeLock();
   loop();
@@ -325,11 +325,9 @@ function draw(run) {
   const c = $("#overlay");
   const ctx = c.getContext("2d");
   ctx.clearRect(0, 0, c.width, c.height);
-  if (run.demo) {
-    ctx.fillStyle = "#0e1216"; ctx.fillRect(0, 0, c.width, c.height);
-  }
-  // The camera picture is enough on its own; the skeleton is optional (always drawn in Demo, which has no picture).
-  if (run.lastLm && (run.demo || app.cfg.skeleton)) drawPose(ctx, run.lastLm, run.frameW, run.frameH, { highlight: performance.now() < run.cueUntil ? run.highlight : [] });
+  // By default the camera picture stays hidden: a calm dark screen with just the skeleton.
+  if (run.demo || !app.cfg.showCamera) { ctx.fillStyle = "#0e1216"; ctx.fillRect(0, 0, c.width, c.height); }
+  if (run.lastLm) drawPose(ctx, run.lastLm, run.frameW, run.frameH, { highlight: performance.now() < run.cueUntil ? run.highlight : [] });
   updateHud(run);
 }
 
@@ -423,17 +421,20 @@ function onCoachEvent(run, e) {
   }
 }
 
-function setSkeleton(on) {
-  app.cfg = settings.set({ skeleton: on });
-  syncSkelButton();
+// The camera keeps running for pose tracking either way; this only shows or hides its picture.
+function setShowCamera(on) {
+  app.cfg = settings.set({ showCamera: on });
+  syncCamButton();
 }
-function syncSkelButton() {
-  const b = $("#btnSkel");
-  b.setAttribute("aria-pressed", String(!!app.cfg.skeleton));
-  b.classList.toggle("on", !!app.cfg.skeleton);
+function syncCamButton() {
+  const on = !!app.cfg.showCamera;
+  const b = $("#btnCam");
+  b.setAttribute("aria-pressed", String(on));
+  b.classList.toggle("on", on);
   b.hidden = !!app.run?.demo;
-  const s = $("#setSkel");
-  if (s) s.checked = !!app.cfg.skeleton;
+  $("#video").classList.toggle("unseen", !on);
+  const s = $("#setCam");
+  if (s) s.checked = on;
 }
 
 function togglePause() {
@@ -852,7 +853,7 @@ function bindSettings() {
   $("#setVoice").addEventListener("change", (e) => { app.cfg = settings.set({ voice: e.target.checked }); });
   $("#setVoiceCues").addEventListener("change", (e) => { app.cfg = settings.set({ voiceCues: e.target.checked }); });
   $("#setMirror").addEventListener("change", (e) => { app.cfg = settings.set({ mirror: e.target.checked }); });
-  $("#setSkel").addEventListener("change", (e) => setSkeleton(e.target.checked));
+  $("#setCam").addEventListener("change", (e) => setShowCamera(e.target.checked));
   $("#setModel").addEventListener("change", (e) => { app.cfg = settings.set({ model: e.target.value }); });
   $("#btnTeach").addEventListener("click", () => { location.hash = "train"; startWorkout({ teach: $("#teachEx").value }); });
   $("#btnClearTeach").addEventListener("click", async (e) => {
