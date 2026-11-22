@@ -107,6 +107,8 @@ function bindSetup() {
   $("#btnEndSet").addEventListener("click", () => { if (app.run) app.run.coach.endSet(app.run.t); });
   $("#btnFinish").addEventListener("click", () => finishWorkout());
   $("#btnFlip").addEventListener("click", flipCamera);
+  $("#btnSkel").addEventListener("click", () => setSkeleton(!app.cfg.skeleton));
+  syncSkelButton();
   $("#exPill").addEventListener("click", pickExercise);
   $("#sheetBack").addEventListener("click", closeSheet);
 }
@@ -181,6 +183,7 @@ async function startWorkout({ teach = null }) {
   } finally {
     $("#btnStart").disabled = false;
   }
+  syncSkelButton();
   if (teach) beginTeach(run, teach);
   requestWakeLock();
   loop();
@@ -325,7 +328,8 @@ function draw(run) {
   if (run.demo) {
     ctx.fillStyle = "#0e1216"; ctx.fillRect(0, 0, c.width, c.height);
   }
-  if (run.lastLm) drawPose(ctx, run.lastLm, run.frameW, run.frameH, { highlight: performance.now() < run.cueUntil ? run.highlight : [] });
+  // The camera picture is enough on its own; the skeleton is optional (always drawn in Demo, which has no picture).
+  if (run.lastLm && (run.demo || app.cfg.skeleton)) drawPose(ctx, run.lastLm, run.frameW, run.frameH, { highlight: performance.now() < run.cueUntil ? run.highlight : [] });
   updateHud(run);
 }
 
@@ -417,6 +421,19 @@ function onCoachEvent(run, e) {
     $("#repCount").textContent = "0"; $("#cleanCount").textContent = "0";
     $("#lastRep").hidden = true;
   }
+}
+
+function setSkeleton(on) {
+  app.cfg = settings.set({ skeleton: on });
+  syncSkelButton();
+}
+function syncSkelButton() {
+  const b = $("#btnSkel");
+  b.setAttribute("aria-pressed", String(!!app.cfg.skeleton));
+  b.classList.toggle("on", !!app.cfg.skeleton);
+  b.hidden = !!app.run?.demo;
+  const s = $("#setSkel");
+  if (s) s.checked = !!app.cfg.skeleton;
 }
 
 function togglePause() {
@@ -835,6 +852,7 @@ function bindSettings() {
   $("#setVoice").addEventListener("change", (e) => { app.cfg = settings.set({ voice: e.target.checked }); });
   $("#setVoiceCues").addEventListener("change", (e) => { app.cfg = settings.set({ voiceCues: e.target.checked }); });
   $("#setMirror").addEventListener("change", (e) => { app.cfg = settings.set({ mirror: e.target.checked }); });
+  $("#setSkel").addEventListener("change", (e) => setSkeleton(e.target.checked));
   $("#setModel").addEventListener("change", (e) => { app.cfg = settings.set({ model: e.target.value }); });
   $("#btnTeach").addEventListener("click", () => { location.hash = "train"; startWorkout({ teach: $("#teachEx").value }); });
   $("#btnClearTeach").addEventListener("click", async (e) => {
