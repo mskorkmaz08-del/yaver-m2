@@ -121,3 +121,7 @@ Bump the `?v=` number in `index.html` and on every `?v=` import (`src/app.js`, `
 3. Robotics Academy: course and robot simulator (first version done), and the AI project tutor
 4. Shaping, save and export, MCP tools
 5. Phone and ESP32
+
+## CaliCoach (gym/)
+
+The camera calisthenics coach: recognises the exercise, counts reps, scores each rep's form, records every set as a 3D skeleton and replays it next to a perfect-form model. Open it from the CaliCoach button on the home screen, say "open the gym", or go to https://mskorkmaz08-del.github.io/yaver-m2/gym/. Yaver (Mark One) reads its results. Details: [gym/README.md](gym/README.md).
