@@ -11,9 +11,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="CaliCoach">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icons/icon-180.png">
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="icon" href="../icons/yaver2c.svg" type="image/svg+xml">
+  <link rel="icon" href="../icons/yaver2c-64.png" sizes="64x64">
+  <link rel="apple-touch-icon" href="../icons/yaver2c-apple-180.png">
+  <link rel="stylesheet" href="style.css?v=4">
   <script type="importmap">
     { "imports": { "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs" } }
   </script>
@@ -54,7 +55,8 @@
         </div>
 
         <div id="setup" class="setup">
-          <div class="brand"><img src="icons/icon.svg" alt="" width="44" height="44"><div><h1>CaliCoach</h1><p>Calisthenics form coach</p></div></div>
+          <a class="back-home" href="../" aria-label="Back to Yaver Mark II">‹ Yaver</a>
+          <div class="brand"><img src="../icons/yaver2c.svg" alt="" width="44" height="44"><div><h1>CaliCoach</h1><p>Calisthenics form coach · Yaver Mark II</p></div></div>
           <div class="card">
             <h2>Start a workout</h2>
             <div class="seg" role="radiogroup" aria-label="Video source">
@@ -178,6 +180,7 @@
   </main>
 
   <nav id="tabs" aria-label="Sections">
+    <a class="tab-home" href="../" aria-label="Back to Yaver Mark II"><span class="ti">‹</span>Yaver</a>
     <button data-view="train" class="on"><span class="ti">◉</span>Train</button>
     <button data-view="history"><span class="ti">☰</span>History</button>
     <button data-view="progress"><span class="ti">↗</span>Progress</button>
@@ -189,6 +192,6 @@
   <div id="sheetBack" class="sheet-back" hidden></div>
   <div id="sheet" class="sheet" hidden role="dialog" aria-modal="true"><div class="grab"></div><div id="sheetBody"></div></div>
 
-  <script type="module" src="app.js?v=3"></script>
+  <script type="module" src="app.js?v=4"></script>
 </body>
 </html>
