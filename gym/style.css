@@ -180,3 +180,9 @@ input[type=url], input[type=password], input[type=email], input[type=text] { wid
 .mini.skel.on { color: var(--accent); border-color: var(--accent); }
 /* Hidden camera picture: still playing (pose tracking needs its frames), just not seen. */
 #video.unseen { opacity: 0; }
+
+/* back to Yaver Mark II */
+.back-home { display: inline-block; color: var(--muted); text-decoration: none; font-weight: 600; padding: 6px 2px; margin: -4px 0 6px; }
+.back-home:hover { color: var(--text); }
+#tabs .tab-home { flex: 0.8; background: none; border: 0; color: var(--muted); font-size: 11px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; text-decoration: none; border-right: 1px solid var(--line); }
+#tabs .tab-home .ti { font-size: 21px; line-height: 1; }
