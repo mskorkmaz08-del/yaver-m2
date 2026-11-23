@@ -5,9 +5,9 @@
 // the board's header to free holes, rails and module pins, and lie over
 // whatever is under them instead of looping through the air.
 import * as THREE from "three";
-import { arduinoUno, esp32, pinWorld, MAT } from "./parts.js?v=26";
-import { buildPart } from "./project-parts.js?v=26";
-import { dispose } from "./stage.js?v=26";
+import { arduinoUno, esp32, pinWorld, MAT } from "./parts.js?v=27";
+import { buildPart } from "./project-parts.js?v=27";
+import { dispose } from "./stage.js?v=27";
 
 const P = 0.254; // 0.1 inch between holes
 const Z0 = P / 2; // the cell grid sits half a pitch off centre in z, like the holes
@@ -549,4 +549,213 @@ export function benchWire(a, b, color, under) {
   group.userData.curve = curve;
   group.userData.mat = mat;
   return group;
+}
+
+// ---- A wiring harness: every wire on its own path -------------------------------------
+//
+// Used where many wires leave one Uno (Mini Yaver). A wire rises straight out
+// of each plug to a height of its own, runs along z to a lane, along x, along
+// z again and straight down, like a line on a chart. Wires that would come
+// near each other get different heights, and a wire that passes over another
+// wire's plug runs above it, so its rising leg never pokes through. Short hops
+// between breadboard holes stay as draped jumpers when nothing is in their way.
+const CLEAR = 0.24; // height between levels: a 0.14 wire plus a gap
+const NEAR = 0.2; // closer than this in plan view, two wires need different heights
+
+// Shortest distance between two segments in the ground plane (axis-aligned or not).
+function segDist(a, b, c, d) {
+  const pt = (p, s, e) => {
+    const dx = e[0] - s[0], dz = e[1] - s[1], l = dx * dx + dz * dz;
+    const t = l ? Math.max(0, Math.min(1, ((p[0] - s[0]) * dx + (p[1] - s[1]) * dz) / l)) : 0;
+    return Math.hypot(p[0] - s[0] - t * dx, p[1] - s[1] - t * dz);
+  };
+  const cross = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  const o1 = cross(a, b, c), o2 = cross(a, b, d), o3 = cross(c, d, a), o4 = cross(c, d, b);
+  if (((o1 > 0 && o2 < 0) || (o1 < 0 && o2 > 0)) && ((o3 > 0 && o4 < 0) || (o3 < 0 && o4 > 0))) return 0;
+  return Math.min(pt(a, c, d), pt(b, c, d), pt(c, a, b), pt(d, a, b));
+}
+const pathDist = (p, q) => {
+  let m = Infinity;
+  for (let i = 1; i < p.length; i++) for (let j = 1; j < q.length; j++) m = Math.min(m, segDist(p[i - 1], p[i], q[j - 1], q[j]));
+  return m;
+};
+const nearPath = (pt, path) => pathDist([pt, pt], path);
+
+function wireMesh(pts, ends, color, under) {
+  // Straight runs with small rounded corners.
+  const path = new THREE.CurvePath();
+  const V = (p) => new THREE.Vector3(...p);
+  let from = V(pts[0]);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const p = V(pts[i]), a = V(pts[i - 1]), b = V(pts[i + 1]);
+    const r = Math.min(0.14, p.distanceTo(a) / 2, p.distanceTo(b) / 2);
+    const s = p.clone().addScaledVector(a.clone().sub(p).normalize(), r), e = p.clone().addScaledVector(b.clone().sub(p).normalize(), r);
+    if (from.distanceTo(s) > 1e-4) path.add(new THREE.LineCurve3(from, s));
+    path.add(new THREE.QuadraticBezierCurve3(s, p, e));
+    from = e;
+  }
+  path.add(new THREE.LineCurve3(from, V(pts[pts.length - 1])));
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.45, emissive: color, emissiveIntensity: 0 });
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(path, Math.min(900, Math.ceil(path.getLength() / 0.05)), 0.07, 7), mat);
+  tube.castShadow = tube.receiveShadow = true;
+  group.add(tube);
+  for (const e of ends) {
+    const p = V(e.pos), d = V(e.dir);
+    const plug = new THREE.Mesh(new THREE.BoxGeometry(0.24, HOUSING, 0.24), MAT.blackPlastic);
+    plug.position.copy(p).addScaledVector(d, HOUSING / 2);
+    plug.quaternion.setFromUnitVectors(UPV, d);
+    plug.castShadow = true;
+    group.add(plug);
+  }
+  group.updateMatrixWorld(true);
+  group.traverse((m) => { if (m.isMesh) under.push(m); });
+  group.userData.curve = path;
+  group.userData.mat = mat;
+  group.userData.points = pts;
+  return group;
+}
+
+// items: [{ a, b, color }] (ends as benchPlan gives them). Returns one group per item.
+export function harness(items, under) {
+  // A module's pins point out from its centre, so the pins of one header fan
+  // out and their plugs can cross. Give a header's pins one shared direction.
+  const mean = new Map();
+  for (const it of items) for (const e of [it.a, it.b]) if (e.kind === "pin") {
+    const m = mean.get(e.part) ?? [0, 0];
+    mean.set(e.part, [m[0] + e.dir[0], m[1] + e.dir[2]]);
+  }
+  const square = (e) => {
+    const m = mean.get(e.part);
+    if (!m) return e;
+    let [x, z] = m;
+    const l = Math.hypot(x, z) || 1;
+    [x, z] = [x / l, z / l];
+    if (Math.abs(x) > 0.9) [x, z] = [Math.sign(x), 0];
+    else if (Math.abs(z) > 0.9) [x, z] = [0, Math.sign(z)];
+    return e.dir[0] * x + e.dir[2] * z > 0.5 ? { ...e, dir: [x, 0, z] } : e;
+  };
+  items = items.map((it) => ({ ...it, a: square(it.a), b: square(it.b) }));
+  const onBB = (e) => e.kind === "hole" || e.kind === "rail";
+  const exit = (e) => {
+    const p = new THREE.Vector3(...e.pos).addScaledVector(new THREE.Vector3(...e.dir), HOUSING + (e.kind === "pin" ? 0.3 : 0));
+    return [p.x, p.y, p.z];
+  };
+  const W = items.map((it, i) => ({ i, it, ra: exit(it.a), rb: exit(it.b) }));
+  const all = W.flatMap((w) => [w.it.a, w.it.b]);
+  const zs = (f) => all.filter(f).map((e) => e.pos[2]);
+  const boardZ = Math.max(...zs((e) => e.kind === "board"));
+  const bbZ = zs(onBB);
+  const exitsFront = W.flatMap((w) => [[w.it.a, w.ra], [w.it.b, w.rb]]).filter(([e, r]) => e.kind === "pin" && r[2] > Math.max(...bbZ)).map(([, r]) => r[2]);
+  const back = [boardZ + 0.3, Math.min(...bbZ) - 0.3];
+  const front = [Math.max(...bbZ) + 0.3, Math.max(Math.max(...bbZ) + 0.3, Math.min(...exitsFront, 99) - 0.15)];
+
+  // Short breadboard hops stay draped unless another wire's plug or path is in the way.
+  const flat = (w) => [[w.ra[0], w.ra[2]], [w.rb[0], w.rb[2]]];
+  for (const w of W) w.short = onBB(w.it.a) && onBB(w.it.b) && Math.hypot(w.ra[0] - w.rb[0], w.ra[2] - w.rb[2]) < 6;
+  const plugs = W.flatMap((w) => [{ w, p: [w.ra[0], w.ra[2]] }, { w, p: [w.rb[0], w.rb[2]] }]);
+  for (const w of W.filter((x) => x.short)) {
+    if (plugs.some(({ w: o, p }) => o !== w && Math.hypot(p[0] - w.ra[0], p[1] - w.ra[2]) > 0.05 && Math.hypot(p[0] - w.rb[0], p[1] - w.rb[2]) > 0.05 && nearPath(p, flat(w)) < 0.6)) w.short = false;
+  }
+
+  // Lanes: board wires in the channel between the Uno and the breadboard,
+  // module wires in front of the breadboard, spread so their x-runs overlap least.
+  const routed = W.filter((w) => !w.short);
+  const lanes = (list, [z0, z1]) => {
+    const n = Math.max(1, Math.floor((z1 - z0) / CLEAR) + 1);
+    const used = Array.from({ length: n }, () => []);
+    const span = (w) => [Math.min(w.ra[0], w.rb[0]) - CLEAR, Math.max(w.ra[0], w.rb[0]) + CLEAR];
+    for (const w of list.sort((a, b) => (span(b)[1] - span(b)[0]) - (span(a)[1] - span(a)[0]))) {
+      const [s0, s1] = span(w);
+      const cost = used.map((u) => u.filter(([a, b]) => a < s1 && s0 < b).length);
+      const k = cost.indexOf(Math.min(...cost));
+      used[k].push([s0, s1]);
+      w.lane = n === 1 ? (z0 + z1) / 2 : z0 + (k * (z1 - z0)) / (n - 1);
+    }
+  };
+  lanes(routed.filter((w) => w.it.a.kind === "board" || w.it.b.kind === "board"), back);
+  lanes(routed.filter((w) => w.it.a.kind !== "board" && w.it.b.kind !== "board" && (w.it.a.kind === "pin" || w.it.b.kind === "pin")), front);
+  for (const w of routed) {
+    if (w.lane === undefined) w.lane = w.ra[2];
+    w.path = [[w.it.a.pos[0], w.it.a.pos[2]], [w.ra[0], w.ra[2]], [w.ra[0], w.lane], [w.rb[0], w.lane], [w.rb[0], w.rb[2]], [w.it.b.pos[0], w.it.b.pos[2]]];
+  }
+
+  // Two wires that each pass over the other's plug can't both run on top:
+  // try the other wire shapes (x-run first, or last) until no pair does.
+  const ends2 = (o) => [[o.ra[0], o.ra[2]], [o.rb[0], o.rb[2]]];
+  const over = (w, o) => ends2(o).some((p) => nearPath(p, w.path) < NEAR);
+  const clashes = (w) => routed.filter((o) => o !== w && over(w, o) && over(o, w));
+  const setLane = (w, lane) => {
+    w.lane = lane;
+    w.path = [[w.it.a.pos[0], w.it.a.pos[2]], [w.ra[0], w.ra[2]], [w.ra[0], lane], [w.rb[0], lane], [w.rb[0], w.rb[2]], [w.it.b.pos[0], w.it.b.pos[2]]];
+  };
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = false;
+    for (const w of routed) {
+      if (!clashes(w).length) continue;
+      const was = w.lane;
+      const best = [w.lane, w.ra[2], w.rb[2]].map((lane) => { setLane(w, lane); return [lane, clashes(w).length]; }).sort((a, b) => a[1] - b[1])[0];
+      changed ||= best[0] !== was;
+      setLane(w, best[0]);
+    }
+    if (!changed) break;
+  }
+
+  // Heights: a wire whose path passes over another's plug must run above it;
+  // wires whose paths come close can't share a height.
+  const below = new Map(routed.map((w) => [w, new Set()]));
+  for (const w of routed) for (const o of routed) {
+    if (o === w) continue;
+    if ([[o.ra[0], o.ra[2]], [o.rb[0], o.rb[2]]].some((p) => nearPath(p, w.path) < NEAR)) below.get(w).add(o);
+  }
+  // Break any cycle (two wires over each other's plugs) by dropping one edge.
+  const state = new Map();
+  const visit = (w) => {
+    state.set(w, 1);
+    for (const o of [...below.get(w)]) {
+      if (state.get(o) === 1) below.get(w).delete(o);
+      else if (!state.get(o)) visit(o);
+    }
+    state.set(w, 2);
+  };
+  routed.forEach((w) => state.get(w) || visit(w));
+  const order = [], done = new Set();
+  const place = (w) => { if (done.has(w)) return; done.add(w); below.get(w).forEach(place); order.push(w); };
+  routed.forEach(place);
+  const byLevel = [];
+  for (const w of order) {
+    let L = Math.max(-1, ...[...below.get(w)].map((o) => o.level)) + 1;
+    while ((byLevel[L] ?? []).some((o) => pathDist(o.path, w.path) < NEAR)) L++;
+    (byLevel[L] ??= []).push(w);
+    w.level = L;
+  }
+
+  // The lowest height clears everything on the Uno and the breadboard.
+  const xs = routed.flatMap((w) => w.path.map((p) => p[0])), zz = routed.flatMap((w) => w.path.map((p) => p[1]));
+  const ray = new THREE.Raycaster();
+  let top = 0;
+  const shortMeshes = new Map();
+  for (const w of W.filter((x) => x.short)) shortMeshes.set(w, benchWire(w.it.a, w.it.b, w.it.color, under));
+  for (let x = Math.min(...xs); x <= Math.max(...xs); x += 0.2) for (let z = Math.min(...zz, boardZ - 5); z <= Math.max(...zz); z += 0.2) {
+    if (!routed.some((w) => nearPath([x, z], w.path) < 0.3)) continue;
+    ray.set(new THREE.Vector3(x, 40, z), DOWN);
+    const hit = ray.intersectObjects(under, false)[0];
+    if (hit) top = Math.max(top, hit.point.y);
+  }
+  const base = Math.max(top + 0.35, ...routed.flatMap((w) => [w.ra[1], w.rb[1]]).map((y) => y + 0.3));
+  for (const w of routed) {
+    const h = base + w.level * CLEAR;
+    const pts = [w.it.a.pos, w.ra, [w.ra[0], h, w.ra[2]], [w.ra[0], h, w.lane], [w.rb[0], h, w.lane], [w.rb[0], h, w.rb[2]], w.rb, w.it.b.pos]
+      .filter((p, k, arr) => k === 0 || Math.hypot(p[0] - arr[k - 1][0], p[1] - arr[k - 1][1], p[2] - arr[k - 1][2]) > 1e-3);
+    // Drop points in the middle of a straight run.
+    const clean = pts.filter((p, k) => {
+      if (k === 0 || k === pts.length - 1) return true;
+      const a = pts[k - 1], b = pts[k + 1];
+      const u = [p[0] - a[0], p[1] - a[1], p[2] - a[2]], v = [b[0] - p[0], b[1] - p[1], b[2] - p[2]];
+      const c = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+      return Math.hypot(...c) > 1e-6;
+    });
+    w.mesh = wireMesh(clean, [w.it.a, w.it.b], w.it.color, under);
+  }
+  return W.map((w) => w.mesh ?? shortMeshes.get(w));
 }

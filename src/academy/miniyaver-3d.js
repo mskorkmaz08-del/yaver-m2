@@ -2,7 +2,7 @@
 // models. The same eight steps as the wiring map, but every wire end carries
 // the name of the pin it goes to ("D13", "LCD RS", "595 Q0"), so nothing is
 // only "left" or "right". Played by the project player (project.js).
-import { KINDS } from "./project-parts.js?v=26";
+import { KINDS } from "./project-parts.js?v=27";
 
 // parts: [id, type, label, value, why, tag]. The tag is the short name on
 // the pin labels.

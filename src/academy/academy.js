@@ -3,22 +3,22 @@
 // it is opened from Yaver's home screen. Hands (through the webcam) or the
 // mouse drive everything: pinch to press buttons and grab parts, move to
 // turn the view, both hands to zoom, and an open-hand swipe to change step.
-import { Stage } from "./stage.js?v=26";
-import { stepTweens, tweening } from "./anim.js?v=26";
-import { LessonContext } from "./course.js?v=26";
-import { ELECTRONICS } from "./lessons-electronics.js?v=26";
-import { ARDUINO } from "./lessons-arduino.js?v=26";
-import { ESP32 } from "./lessons-esp32.js?v=26";
-import { Simulator, buildRobot } from "./sim.js?v=26";
-import { HandInput } from "../handinput.js?v=26";
-import { projectLesson } from "./project.js?v=26";
-import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=26";
-import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=26";
-import { PIANO } from "./project-examples.js?v=26";
-import { KIT, kitPlan } from "./kit.js?v=26";
-import { isOn, onSwitch } from "../switches.js?v=26";
-import { MiniYaver } from "./miniyaver.js?v=26";
-import { miniPlan } from "./miniyaver-3d.js?v=26";
+import { Stage } from "./stage.js?v=27";
+import { stepTweens, tweening } from "./anim.js?v=27";
+import { LessonContext } from "./course.js?v=27";
+import { ELECTRONICS } from "./lessons-electronics.js?v=27";
+import { ARDUINO } from "./lessons-arduino.js?v=27";
+import { ESP32 } from "./lessons-esp32.js?v=27";
+import { Simulator, buildRobot } from "./sim.js?v=27";
+import { HandInput } from "../handinput.js?v=27";
+import { projectLesson } from "./project.js?v=27";
+import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=27";
+import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=27";
+import { PIANO } from "./project-examples.js?v=27";
+import { KIT, kitPlan } from "./kit.js?v=27";
+import { isOn, onSwitch } from "../switches.js?v=27";
+import { MiniYaver } from "./miniyaver.js?v=27";
+import { miniPlan } from "./miniyaver-3d.js?v=27";
 
 const VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 export const MODULES = [ELECTRONICS, ARDUINO, ESP32];
@@ -144,6 +144,7 @@ function miniBlock() {
       <h2><span>Project</span>Mini Yaver: AI on your Uno</h2>
       <div class="ac-cards">
         <button class="ac-card ac-sim-card" data-mini="3d"><b class="ac-num">🧊</b><span><strong>1. Build it in 3D</strong><small>Your kit's real parts on a breadboard, 8 steps. Every wire end is labelled with its pin.</small></span></button>
+        <button class="ac-card ac-sim-card" data-mini="wires"><b class="ac-num">📋</b><span><strong>Wire list</strong><small>Every jumper numbered: from, to, colour and the hole it plugs into. Printable.</small></span></button>
         <button class="ac-card ac-sim-card" data-mini="wiring"><b class="ac-num">🔌</b><span><strong>Wiring map</strong><small>The same circuit flat: click any part or Uno pin to follow its wires.</small></span></button>
         <button class="ac-card ac-sim-card" data-mini="code"><b class="ac-num">💻</b><span><strong>2. Understand the code</strong><small>The real sketch and Mac bridge, 7 short sections.</small></span></button>
       </div>
@@ -306,7 +307,7 @@ function openLesson(l) {
   $(".ac-lesson-title").textContent = lesson.title;
   $(".ac-lesson-module").textContent = lesson.mini ? "Mini Yaver · 3D build" : lesson.kit ? `My kit · Lesson ${lesson.kit.n} of ${KIT.lessons.length}` : lesson.custom ? "Project tutor" : `Module ${lesson.moduleIndex + 1} · ${lesson.module.title}`;
   ui.crumbs.innerHTML = lesson.mini
-    ? `<button class="ac-link" data-act="menu">Academy</button> › <button class="ac-link" data-act="mini">Mini Yaver</button> › 3D build`
+    ? `<button class="ac-link" data-act="menu">Academy</button> › <button class="ac-link" data-act="mini">Mini Yaver</button> › 3D build · <a class="ac-link" href="#academy/mini-yaver/wires">📋 Wire list</a>`
     : `<button class="ac-link" data-act="menu">${lesson.kit ? "My kit" : lesson.custom ? "Projects" : "Course"}</button> › ${esc(lesson.title)}`;
   $(".ac-dots").innerHTML = lesson.steps.map((s, i) => `<button class="ac-dot" data-step="${i}" title="${s.title}"></button>`).join("");
   goStep(0);
@@ -553,7 +554,7 @@ export function command(raw) {
   if (/\b(back|previous|last step)\b/.test(text) && !/\bhome\b/.test(text) && view === "lesson") { prev(); return "Going back."; }
   if (/\b(repeat|again|replay)\b/.test(text) && view === "lesson") { goStep(stepIndex); return "Once more."; }
   if (/\b(menu|all lessons|course map|lesson list)\b/.test(text)) { go("menu"); return "Here's the course."; }
-  if (/\bmini ?yaver\b/.test(text)) { go(/\bcode\b/.test(text) ? "mini-yaver/code" : /\b(map|flat|2d)\b/.test(text) ? "mini-yaver" : "mini-yaver/3d"); return "Opening the Mini Yaver tutorial."; }
+  if (/\bmini ?yaver\b/.test(text)) { go(/\bcode\b/.test(text) ? "mini-yaver/code" : /\b(wire list|spec|list)\b/.test(text) ? "mini-yaver/wires" : /\b(map|flat|2d)\b/.test(text) ? "mini-yaver" : "mini-yaver/3d"); return "Opening the Mini Yaver tutorial."; }
   if (view === "mini" && /\b(the )?code\b/.test(text) && /\b(show|open|go to)\b/.test(text)) { mini.setTab("code"); return "Here's the code."; }
   if (view === "mini" && /\bwiring\b/.test(text)) { mini.setTab("wiring"); return "Here's the wiring."; }
   if (/\b(simulator|build (a|my|the|our) robot)\b/.test(text)) { go("sim"); return "Opening the robot simulator."; }

@@ -4,6 +4,8 @@
 // /mini-yaver/), walked through section by section; each note lights up the
 // lines it talks about. Plain HTML and SVG, no 3D, so every pin is readable.
 
+import { chartHTML, specHTML } from "./miniyaver-chart.js?v=27";
+
 const SKETCH_URL = new URL("../../mini-yaver/MiniYaver/MiniYaver.ino", import.meta.url).href;
 const BRIDGE_URL = new URL("../../mini-yaver/mini_yaver_bridge.py", import.meta.url).href;
 const FILES_URL = new URL("../../mini-yaver/", import.meta.url).href;
@@ -258,7 +260,7 @@ export class MiniYaver {
   }
 
   open(tab = "wiring") {
-    this.tab = tab === "code" ? "code" : "wiring";
+    this.tab = tab === "code" || tab === "wires" ? tab : "wiring";
     this.el.hidden = false;
     this.render();
   }
@@ -266,11 +268,12 @@ export class MiniYaver {
   get isOpen() { return !this.el.hidden; }
 
   describe() {
+    if (this.tab === "wires") return "He is in the Mini Yaver tutorial (his Arduino Uno desk AI), on the numbered wire list: every jumper with its from pin, to pin, colour and breadboard hole.";
     if (this.tab === "code") return `He is in the Mini Yaver tutorial (his Arduino Uno desk AI), on the code tour: "${SECTIONS[this.section].title}".`;
     return `He is in the Mini Yaver tutorial (his Arduino Uno desk AI), wiring step ${this.step + 1} of ${STEPS.length}: "${STEPS[this.step].title}".`;
   }
-  next() { this.tab === "code" ? this.goSection(this.section + 1) : this.goStep(this.step + 1); }
-  prev() { this.tab === "code" ? this.goSection(this.section - 1) : this.goStep(this.step - 1); }
+  next() { if (this.tab === "wires") return; this.tab === "code" ? this.goSection(this.section + 1) : this.goStep(this.step + 1); }
+  prev() { if (this.tab === "wires") return; this.tab === "code" ? this.goSection(this.section - 1) : this.goStep(this.step - 1); }
   goStep(i) { this.step = Math.max(0, Math.min(i, STEPS.length - 1)); this.focus = null; this.renderWiring(); }
   goSection(i) { this.section = Math.max(0, Math.min(i, SECTIONS.length - 1)); this.note = null; this.renderCode(); }
   setTab(tab) { this.tab = tab; this.render(); }
@@ -280,6 +283,8 @@ export class MiniYaver {
     if (!t) return;
     const [act, arg] = t.dataset.my.split(":");
     if (act === "tab") this.setTab(arg);
+    else if (act === "wv") { this.wireView = arg; this.renderWires(); }
+    else if (act === "print") window.print();
     else if (act === "step") this.goStep(Number(arg));
     else if (act === "next") this.next();
     else if (act === "prev") this.prev();
@@ -296,6 +301,7 @@ export class MiniYaver {
         <div><h1>Mini Yaver</h1><p class="ac-lead">Your Uno as a desk AI: ask with the remote or a card, the Mac asks the AI, the answer scrolls on the LCD. 18 parts, all 20 pins.</p></div>
         <div class="my-tabs" role="tablist">
           <a class="ac-btn" href="#academy/mini-yaver/3d">1 · 3D build</a>
+          <button class="ac-btn ${this.tab === "wires" ? "primary" : ""}" data-my="tab:wires" role="tab">📋 Wire list</button>
           <button class="ac-btn ${this.tab === "wiring" ? "primary" : ""}" data-my="tab:wiring" role="tab">Wiring map</button>
           <button class="ac-btn ${this.tab === "code" ? "primary" : ""}" data-my="tab:code" role="tab">2 · Code</button>
           <a class="ac-btn ghost" href="${FILES_URL}MiniYaver/MiniYaver.ino" download>⬇ Sketch</a>
@@ -304,7 +310,20 @@ export class MiniYaver {
       </div>
       <div class="my-body"></div>`;
     this.body = this.el.querySelector(".my-body");
-    this.tab === "code" ? this.renderCode() : this.renderWiring();
+    this.tab === "code" ? this.renderCode() : this.tab === "wires" ? this.renderWires() : this.renderWiring();
+  }
+
+  // ---- Wire list: a chart where no lines cross, and the build spec ----
+
+  renderWires() {
+    if (this.tab !== "wires" || !this.body) return;
+    this.body.className = "my-body my-wires";
+    this.body.innerHTML = `<div class="my-sub">
+        <button class="ac-btn ${this.wireView === "chart" ? "" : "primary"}" data-my="wv:list">Wire list</button>
+        <button class="ac-btn ${this.wireView === "chart" ? "primary" : ""}" data-my="wv:chart">Pin chart</button>
+        <a class="ac-btn ghost" href="#academy/mini-yaver/3d">See it in 3D</a>
+      </div>
+      <div class="my-wirebody" data-hand-scroll>${this.wireView === "chart" ? chartHTML() : specHTML()}</div>`;
   }
 
   // ---- Wiring ----
