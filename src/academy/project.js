@@ -4,13 +4,13 @@
 // the code line by line, and then runs the sketch against the circuit as
 // wired: buttons can be pressed, the buzzer plays, LEDs light, servos turn.
 import * as THREE from "three";
-import { arduinoUno, esp32, WIRE_COLORS } from "./parts.js?v=26";
-import { stopTweens } from "./anim.js?v=26";
-import { withBreadboard, benchPlan, benchWire, surfaces, holeName } from "./bench.js?v=26";
-import { buildPart } from "./project-parts.js?v=26";
-import { SketchRunner } from "./sketch.js?v=26";
-import { KIT_SHOP, KEYPAD_KEYS } from "./kit-parts.js?v=26";
-import { kitLibs, IR_KEYS, CARDS } from "./kit-sim.js?v=26";
+import { arduinoUno, esp32, WIRE_COLORS } from "./parts.js?v=27";
+import { stopTweens } from "./anim.js?v=27";
+import { withBreadboard, benchPlan, benchWire, harness, surfaces, holeName } from "./bench.js?v=27";
+import { buildPart } from "./project-parts.js?v=27";
+import { SketchRunner } from "./sketch.js?v=27";
+import { KIT_SHOP, KEYPAD_KEYS } from "./kit-parts.js?v=27";
+import { kitLibs, IR_KEYS, CARDS } from "./kit-sim.js?v=27";
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -388,14 +388,27 @@ function layout(ctx, plan) {
   // wires laid before it). A wire between legs in the same breadboard column
   // isn't needed: the column joins them.
   const under = surfaces(objects.values());
-  const lay = (e, color) => benchWire(e.a, e.b, WIRE_COLORS[color] ?? WIRE_COLORS.blue, under);
+  const col = (c) => WIRE_COLORS[c] ?? WIRE_COLORS.blue;
+  const lay = (e, color) => benchWire(e.a, e.b, col(color), under);
+  // Mini Yaver's many wires go through a harness: each on its own path, none
+  // touching another.
+  const items = plan.mini ? [
+    ...plan.wires.map((w, i) => ({ a: bench.wires[i].a, b: bench.wires[i].b, color: col(w.color), skip: bench.wires[i].skip, at: i })),
+    ...bench.bridges.map((br) => ({ a: br.a, b: br.b, color: col(br.color), at: br.at, bridge: true })),
+  ].filter((it) => !it.skip) : [];
+  const routed = items.length ? harness(items, under) : [];
+  const meshOf = new Map(items.map((it, k) => [it, routed[k]]));
   const wires = plan.wires.map((w, i) => {
     const e = bench.wires[i];
-    const group = e.skip ? new THREE.Group() : lay(e, w.color);
+    const own = items.find((it) => it.at === i && !it.bridge);
+    const group = e.skip ? new THREE.Group() : own ? meshOf.get(own) : lay(e, w.color);
     group.userData.ends = [new THREE.Vector3(...e.a.pos), new THREE.Vector3(...e.b.pos)];
     return group;
   });
-  for (const br of bench.bridges) if (wires[br.at]) wires[br.at].add(lay(br, br.color));
+  for (const br of bench.bridges) {
+    const it = items.find((x) => x.bridge && x.a === br.a && x.b === br.b);
+    if (wires[br.at]) wires[br.at].add(it ? meshOf.get(it) : lay(br, br.color));
+  }
   for (const w of wires) w.traverse((m) => { m.userData.noPick = true; });
   return { board, objects, wires, bench };
 }
@@ -481,8 +494,10 @@ export function projectLesson(plan, hooks = {}) {
         ? e.sameColumn ? `Same breadboard column (${holeName(e.a)} and ${holeName(e.b)}): the clip inside joins them, no wire needed.` : "Already joined through the breadboard and the wires before: no wire needed."
         : `Wire: ${endText(plan, w.from, e.a)} → ${endText(plan, w.to, e.b)}.`;
       const hub = bench.bridges.find((br) => br.hub && br.at === k);
-      const first = hub ? `<li class="pj-hub"><i class="pj-swatch" style="background:${WIRE_COLORS[w.color] ?? "#888"}"></i><b>${esc(boardPinName(plan, hub.hub))} → breadboard hole ${esc(hub.b.name)}</b><br><small>${esc(`Wire: ${boardPinName(plan, hub.hub)} feeds more than one part, and one socket holds one jumper. So it goes to a free column first, and the parts take it from there.`)}</small></li>` : "";
-      return first + `<li class="${e.skip ? "pj-nowire" : ""}"><i class="pj-swatch" style="background:${e.skip ? "transparent" : WIRE_COLORS[w.color] ?? "#888"}"></i><b>${esc(wireText(plan, w))}</b><br><small>${esc(where)}${w.why ? ` ${esc(w.why)}` : ""}</small></li>`;
+      // Mini Yaver numbers its wires as its wire list does.
+      const num = (n) => (plan.mini ? `<span class="pj-num">${n}</span>` : "");
+      const first = hub ? `<li class="pj-hub"><i class="pj-swatch" style="background:${WIRE_COLORS[w.color] ?? "#888"}"></i>${num(`${k + 1}a`)}<b>${esc(boardPinName(plan, hub.hub))} → breadboard hole ${esc(hub.b.name)}</b><br><small>${esc(`Wire: ${boardPinName(plan, hub.hub)} feeds more than one part, and one socket holds one jumper. So it goes to a free column first, and the parts take it from there.`)}</small></li>` : "";
+      return first + `<li class="${e.skip ? "pj-nowire" : ""}"><i class="pj-swatch" style="background:${e.skip ? "transparent" : WIRE_COLORS[w.color] ?? "#888"}"></i>${num(k + 1)}<b>${esc(wireText(plan, w))}</b><br><small>${esc(where)}${w.why ? ` ${esc(w.why)}` : ""}</small></li>`;
     }).join("");
     steps.push({ title: s.title, text: md(s.text) + (plugs ? `<h4>Plug in</h4><ul class="pj-plugs">${plugs}</ul>` : "") + (list ? `<h4>Connect</h4><ul class="pj-wires">${list}</ul>` : ""), show: i + 1, plan: s });
   });
@@ -494,7 +509,7 @@ export function projectLesson(plan, hooks = {}) {
     show: Infinity, lines: st.lines ?? [], code: st.code, stage: i,
   }));
   if (plan.mini) {
-    steps.push({ title: "All wired", text: `<p>All 18 parts and every Uno pin. Turn the view to follow any wire: each end is labelled.</p><p class="tip">Next: how the code drives all of this.</p>`, show: Infinity, allTags: true, lines: [] });
+    steps.push({ title: "All wired", text: `<p>All 18 parts and every Uno pin. Each wire runs on its own path, like a line on a chart: up from its plug, along, and straight down, so no two touch. Turn the view to follow any wire: each end is labelled.</p><p><a class="ac-btn" href="#academy/mini-yaver/wires">📋 Wire list</a> every wire numbered: from, to, colour and the hole it plugs into.</p><p class="tip">Next: how the code drives all of this.</p>`, show: Infinity, allTags: true, lines: [] });
     return lessonObject(plan, hooks, steps, partAt, wireAt);
   }
   if (plan.kit) {
