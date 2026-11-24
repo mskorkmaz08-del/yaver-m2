@@ -1,13 +1,14 @@
 // The Mini Yaver tutorial: the Arduino Uno "desk AI" project from his kit,
-// taught in two parts. Wiring: a clickable diagram of every wire, built up in
-// eight short steps. Code: the real sketch and Mac bridge (fetched from
-// /mini-yaver/), walked through section by section; each note lights up the
-// lines it talks about. Plain HTML and SVG, no 3D, so every pin is readable.
+// the lean version with five parts. Wiring: a clickable diagram of every
+// wire, built up in six short steps. Code: the real sketch and the Chrome
+// page that is Yaver's brain (fetched from /mini-yaver/), walked through
+// section by section; each note lights up the lines it talks about. Plain
+// HTML and SVG, no 3D, so every pin is readable.
 
-import { chartHTML, specHTML } from "./miniyaver-chart.js?v=27";
+import { chartHTML, specHTML } from "./miniyaver-chart.js?v=28";
 
 const SKETCH_URL = new URL("../../mini-yaver/MiniYaver/MiniYaver.ino", import.meta.url).href;
-const BRIDGE_URL = new URL("../../mini-yaver/mini_yaver_bridge.py", import.meta.url).href;
+const BRAIN_URL = new URL("../../mini-yaver/app.js", import.meta.url).href;
 const FILES_URL = new URL("../../mini-yaver/", import.meta.url).href;
 
 // ---- The board ----------------------------------------------------------------------
@@ -22,24 +23,15 @@ const PIN = {};
 
 // What each Uno pin does here, and why that pin.
 const PIN_NOTE = {
-  D0: "USB to the Mac (receive). Wired inside the board to the CH340 USB chip, so nothing plugs in here.",
+  D0: "USB to the Mac (receive). Wired inside the board to the USB chip, so nothing plugs in here.",
   D1: "USB to the Mac (send). Same as D0: taken by USB.",
-  D2: "IR receiver. D2 is interrupt INT0, so the IR library catches every flash of the remote.",
-  D3: "Joystick button. D3 is interrupt INT1: a press is caught even while the LCD is busy.",
-  D4: "Stepper coil IN1. D4 to D7 are bits 4 to 7 of one register (PORTD), so one write moves all four coils.",
-  D5: "Stepper coil IN2.", D6: "Stepper coil IN3.", D7: "Stepper coil IN4.",
-  D8: "74HC595 latch (pin 12). A rising edge copies the 8 shifted bits to the outputs.",
-  D9: "Servo signal. The Servo library drives it with Timer1.",
-  D10: "RC522 select (SDA). LOW means \"RFID, listen\"; the 595 ignores this line.",
-  D11: "SPI data out (MOSI). Shared: goes to the RC522 MOSI and the 595 data pin 14.",
-  D12: "SPI data in (MISO). Only the RC522 talks back.",
-  D13: "SPI clock (SCK). Shared: RC522 SCK and 595 clock pin 11.",
-  A0: "Joystick left/right (VRx).", A1: "Joystick up/down (VRy).",
-  A2: "Light: the photoresistor + 10K divider.", A3: "Water sensor.",
-  A4: "Sound sensor (KY-037 analog out). Read every loop to catch claps.",
-  A5: "DHT11 data. An analog pin used as a plain digital pin.",
-  "5V": "Feeds the + rail of the breadboard. Every part's + goes there (except the RC522).",
-  "3V3": "Only for the RC522 (VCC and RST). 5V would damage it.",
+  D2: "The talk button. The code turns on the Uno's built-in pull-up, so D2 reads HIGH, and LOW while you press.",
+  D5: "The buzzer. tone() switches it on and off thousands of times a second to play a note.",
+  D7: "LCD D7 (data bit 4 of 4).", D8: "LCD D6 (data bit 3 of 4).", D9: "LCD D5 (data bit 2 of 4).", D10: "LCD D4 (data bit 1 of 4).",
+  D11: "LCD E (enable): a short pulse tells the LCD \"read the data pins now\".",
+  D12: "LCD RS: HIGH means \"this is a letter\", LOW means \"this is a command\".",
+  A0: "The sound sensor's loudness, read hundreds of times a second to catch a double clap.",
+  "5V": "Feeds the + rail of the breadboard. Every part's + goes there.",
   GND: "Feeds the − rail. Every part's − / GND goes there.",
 };
 
@@ -48,86 +40,43 @@ const PIN_NOTE = {
 // Box [x, y, w, h], pins with absolute positions, power hookup as text, and a
 // short note. Colours are wire colours.
 const PARTS = [
-  { id: "lcd", name: "LCD1602", box: [20, 20, 310, 75], color: "#4cc9ff",
-    pins: { RS: [200, 95], E: [220, 95], D4: [240, 95], D5: [260, 95], D6: [280, 95], D7: [300, 95] },
-    power: ["1 VSS, 5 RW, 16 K → GND", "2 VDD → 5V", "15 A → 5V through 220Ω", "3 V0 → pot middle leg (pot ends: 5V, GND)", "7–10 empty"],
-    note: "The screen. It is driven entirely by the 74HC595, so it costs the Uno zero extra pins. Pins count 1 to 16 from the left. If you see nothing, turn the pot: it sets the contrast." },
-  { id: "sr", name: "74HC595", box: [180, 125, 140, 75], color: "#ffd166",
-    pins: { Q0: [200, 125], Q1: [220, 125], Q2: [240, 125], Q3: [260, 125], Q4: [280, 125], Q5: [300, 125], Q6: [180, 150], Q7: [180, 180], "SH_CP 11": [200, 200], "DS 14": [240, 200], "ST_CP 12": [290, 200] },
-    power: ["16 VCC, 10 MR → 5V", "8 GND, 13 OE → GND", "9 empty"],
-    note: "Shift register: 3 wires in, 8 outputs out. The Uno clocks in 8 bits over SPI, pulses the latch, and Q0–Q7 change together. Notch to the left: pin 1 is bottom-left, pin 16 top-left." },
-  { id: "rfid", name: "RC522 RFID", box: [355, 125, 137, 75], color: "#c792ea", vlabels: true,
-    pins: { SCK: [432, 200], MISO: [450, 200], MOSI: [468, 200], SDA: [486, 200] },
-    power: ["3.3V and RST → Uno 3.3V (never 5V)", "GND → GND", "IRQ empty"],
-    note: "Reads cards by their ID. It shares the SPI clock and data with the 595; its own select line (SDA on D10) says when it is the one listening." },
-  { id: "servo", name: "Servo SG90", box: [498, 125, 94, 70], color: "#ff9f43",
-    pins: { SIG: [504, 195] },
-    power: ["red → 5V", "brown → GND"],
-    note: "The head that nods while the AI thinks. It is switched off (detached) when still, to stop buzzing and save power." },
-  { id: "step", name: "Stepper + ULN2003", box: [600, 125, 170, 75], color: "#06d6a0",
-    pins: { IN4: [620, 200], IN3: [640, 200], IN2: [660, 200], IN1: [680, 200] },
-    power: ["board + → 5V", "board − → GND", "motor plugs into the board"],
-    note: "Turns the head left and right. 4096 half-steps = one turn. The ULN2003 board carries the coil current the Uno can't." },
-  { id: "ir", name: "IR receiver", box: [800, 140, 160, 60], color: "#ff6b6b",
-    pins: { S: [830, 200] },
-    power: ["+ → 5V", "− → GND"],
-    note: "The remote is the keyboard: 21 keys on one pin. Check the letters printed on your module, layouts differ." },
-  { id: "joy", name: "Joystick", box: [140, 480, 170, 70], color: "#f78fb3",
-    pins: { VRx: [260, 480], VRy: [285, 480], SW: [220, 550] },
-    power: ["+5V → 5V", "GND → GND"],
-    note: "Left/right flips screens, up/down scrolls, press = OK. The press uses interrupt INT1 on D3." },
-  { id: "light", name: "Light (LDR)", box: [340, 480, 90, 70], color: "#ffe066",
-    pins: { leg: [400, 480] },
-    power: ["other leg → 5V", "10K from A2 → GND"],
-    note: "Light level. With the 10K resistor it forms a divider: more light, higher voltage on A2." },
-  { id: "water", name: "Water", box: [445, 480, 90, 70], color: "#4dabf7",
-    pins: { S: [505, 480] },
-    power: ["+ → 5V", "− → GND"],
-    note: "Water level on the sensor's stripes. 0–100% on the Sensors screen." },
-  { id: "sound", name: "KY-037", box: [550, 480, 90, 70], color: "#a9e34b",
-    pins: { A0: [628, 480] },
-    power: ["+ → 5V", "G → GND"],
-    note: "Sound. Clap and Mini Yaver says \"Yes, sir?\". Turn its blue screw until a clap triggers it." },
-  { id: "dht", name: "DHT11", box: [655, 480, 90, 70], color: "#66d9e8",
-    pins: { S: [700, 480] },
-    power: ["+ → 5V", "− → GND"],
-    note: "Temperature and humidity on one wire. Reading it stops interrupts for about 4 ms, the one place two parts fight over time." },
-  { id: "relay", name: "Relay", box: [20, 130, 120, 55], color: "#ff8787",
-    pins: { S: [140, 150] },
-    power: ["+ → 5V", "− → GND", "low-voltage lamp only, never 220V"],
-    note: "A switch for a lamp, driven by 595 output Q6. Only switch low-voltage things." },
-  { id: "buzz", name: "Active buzzer", box: [20, 200, 120, 50], color: "#e599f7",
-    pins: { "+": [140, 225] },
-    power: ["+ via 220Ω (on the Q7 wire)", "− → GND"],
-    note: "The one with the sticker. The 220Ω resistor keeps the 595's output safe." },
-  { id: "mac", name: "Mac (USB)", box: [20, 290, 150, 60], color: "#adb5bd",
+  { id: "lcd", name: "LCD1602 (Yaver's face)", box: [40, 30, 440, 80], color: "#4cc9ff",
+    pins: { V0: [95, 110], RS: [200, 110], E: [230, 110], D4: [300, 110], D5: [330, 110], D6: [360, 110], D7: [390, 110] },
+    power: ["1 VSS, 5 RW, 16 K → GND", "2 VDD → 5V", "15 A → 5V through 220Ω", "3 V0 → pot middle leg", "7–10 (D0–D3) empty"],
+    note: "Yaver's face, clock, timers and the short answer. It talks in 4-bit halves on six wires. Pins count 1 to 16 from the left. If you see nothing, turn the pot: it sets the contrast." },
+  { id: "pot", name: "10K pot", box: [40, 150, 110, 60], color: "#ff9f43",
+    pins: { W: [95, 150] },
+    power: ["outer legs → 5V and GND", "middle leg (W) → LCD V0"],
+    note: "The LCD's contrast knob. Too far one way: empty screen. Too far the other: black boxes." },
+  { id: "buzz", name: "Passive buzzer", box: [585, 120, 120, 70], color: "#c792ea",
+    pins: { "+": [620, 190] },
+    power: ["− → GND"],
+    note: "The one without a sticker. tone() makes it play any note: listening, done, timers and alarm tunes." },
+  { id: "btn", name: "Talk button", box: [740, 120, 140, 70], color: "#f78fb3",
+    pins: { "1": [760, 190] },
+    power: ["other side → GND"],
+    note: "Short press: talk, or stop. Hold 1 s: the big night clock. While an alarm rings: press = stop, hold = snooze 5 minutes." },
+  { id: "sound", name: "KY-037 sound (ears)", box: [470, 480, 150, 70], color: "#06d6a0",
+    pins: { AO: [540, 480] },
+    power: ["+ → 5V", "G → GND", "DO empty"],
+    note: "Clap twice and Yaver listens. If it reacts to everything, or to nothing, turn the little screw on its blue box." },
+  { id: "mac", name: "Mac + Chrome", box: [20, 290, 150, 60], color: "#adb5bd",
     pins: {},
-    power: ["USB cable", "runs mini_yaver_bridge.py"],
-    note: "The Uno has no internet. The Mac script asks the AI and sends the answer back over USB (D0/D1)." },
+    power: ["USB cable", "the Mini Yaver page in Chrome"],
+    note: "The brain. The page hears you through the Mac's microphone, asks Gemini, speaks the answer and sends a short version to the LCD over USB (D0/D1)." },
 ];
 const PART = Object.fromEntries(PARTS.map((p) => [p.id, p]));
 
 // Every signal wire. `via` is the y of the horizontal run (or a full point list).
+// The LCD wires nest: the one furthest right runs highest, so none cross.
 const WIRES = [
-  { from: "D13", to: "rfid.SCK" },
-  { from: "D12", to: "rfid.MISO" },
-  { from: "D11", to: "rfid.MOSI" },
-  { from: "D10", to: "rfid.SDA" },
-  { from: "D13", to: "sr.SH_CP 11", via: 248 },
-  { from: "D11", to: "sr.DS 14", via: 240 },
-  { from: "D8", to: "sr.ST_CP 12", via: 232 },
-  { from: "sr.Q0", to: "lcd.RS" }, { from: "sr.Q1", to: "lcd.E" }, { from: "sr.Q2", to: "lcd.D4" },
-  { from: "sr.Q3", to: "lcd.D5" }, { from: "sr.Q4", to: "lcd.D6" }, { from: "sr.Q5", to: "lcd.D7" },
-  { from: "sr.Q6", to: "relay.S" },
-  { from: "sr.Q7", to: "buzz.+", pts: [[180, 180], [160, 180], [160, 225], [140, 225]], note: "220Ω on this wire" },
-  { from: "D9", to: "servo.SIG" },
-  { from: "D7", to: "step.IN4", via: 212 }, { from: "D6", to: "step.IN3", via: 220 },
-  { from: "D5", to: "step.IN2", via: 228 }, { from: "D4", to: "step.IN1", via: 236 },
-  { from: "D2", to: "ir.S", via: 244 },
-  { from: "D3", to: "joy.SW", pts: [[612, 268], [612, 252], [785, 252], [785, 585], [220, 585], [220, 550]] },
-  { from: "A0", to: "joy.VRx", via: 440 }, { from: "A1", to: "joy.VRy", via: 450 },
-  { from: "A2", to: "light.leg", via: 460 }, { from: "A3", to: "water.S", via: 468 },
-  { from: "A4", to: "sound.A0" }, { from: "A5", to: "dht.S", via: 465 },
+  { from: "D12", to: "lcd.RS", via: 240 }, { from: "D11", to: "lcd.E", via: 232 },
+  { from: "D10", to: "lcd.D4", via: 224 }, { from: "D9", to: "lcd.D5", via: 216 },
+  { from: "D8", to: "lcd.D6", via: 208 }, { from: "D7", to: "lcd.D7", via: 200 },
+  { from: "pot.W", to: "lcd.V0" },
+  { from: "D5", to: "buzz.+", via: 244 },
+  { from: "D2", to: "btn.1", via: 236 },
+  { from: "A0", to: "sound.AO" },
 ];
 
 function point(ref) {
@@ -147,29 +96,23 @@ for (const w of WIRES) {
 
 const STEPS = [
   { title: "Power rails first", parts: [], power: true,
-    text: "Run the Uno's <b>5V</b> to the breadboard's red <b>+</b> rail and <b>GND</b> to the blue <b>−</b> rail. From now on, every \"5V\" and \"GND\" means those rails. Only the RFID reader uses the separate <b>3.3V</b> pin.",
+    text: "Run the Uno's <b>5V</b> to the breadboard's red <b>+</b> rail and <b>GND</b> to the blue <b>−</b> rail. From now on, every \"5V\" and \"GND\" means those rails.",
     check: ["Uno 5V → + rail", "Uno GND → − rail"] },
-  { title: "74HC595: 3 wires, 8 outputs", parts: ["sr"],
-    text: "This chip is why everything fits. Put it across the breadboard's middle gap, notch to the left. The Uno sends it 8 bits on <b>D11</b> (data) and <b>D13</b> (clock), then a pulse on <b>D8</b> (latch) makes all 8 outputs change at once.",
-    check: ["16 VCC and 10 MR → 5V", "8 GND and 13 OE → GND", "14 DS → D11", "11 SH_CP → D13", "12 ST_CP → D8"] },
-  { title: "The LCD screen", parts: ["lcd"],
-    text: "The LCD takes six of the 595's outputs: <b>Q0 → RS</b>, <b>Q1 → E</b>, <b>Q2–Q5 → D4–D7</b>. It talks in 4-bit halves, so D0–D3 stay empty. The pot sets the contrast. Upload now and turn it until you see letters: test early, before more wires hide a mistake.",
-    check: ["VSS, RW, K → GND; VDD → 5V", "V0 → pot middle (pot ends 5V, GND)", "A → 5V through 220Ω", "RS ← Q0, E ← Q1", "D4–D7 ← Q2–Q5"] },
-  { title: "RFID reader on the same bus", parts: ["rfid"],
-    text: "The RC522 <b>shares</b> clock (D13) and data (D11) with the 595. That's an SPI bus: many chips, one clock. Each chip has its own select line; the RC522's is <b>D10</b>. It runs on <b>3.3V only</b>.",
-    check: ["3.3V and RST → Uno 3.3V", "GND → GND", "SDA → D10, SCK → D13", "MOSI → D11, MISO → D12"] },
-  { title: "Inputs: remote and joystick", parts: ["ir", "joy"],
-    text: "The IR remote replaces the 4×4 keypad: 21 keys on <b>one</b> pin (D2) instead of 8. The joystick reads two analog axes on <b>A0/A1</b> and its button on <b>D3</b>, the second interrupt pin.",
-    check: ["IR S → D2", "Joystick VRx → A0, VRy → A1", "Joystick SW → D3", "+ and − of both → rails"] },
-  { title: "Motion: servo and stepper", parts: ["servo", "step"],
-    text: "Servo signal on <b>D9</b>. The stepper's four coils go through the ULN2003 board on <b>D4–D7</b>, which are one register, so the code moves all four in one write. USB can't power both motors at once, so the code moves only one at a time.",
-    check: ["Servo orange → D9, red → 5V, brown → GND", "Motor plugged into the ULN2003", "IN1–IN4 → D4–D7", "Board + → 5V, − → GND"] },
-  { title: "Sensors on the analog pins", parts: ["light", "water", "sound", "dht"],
-    text: "Light on <b>A2</b> (with a 10K to GND), water on <b>A3</b>, sound on <b>A4</b>, DHT11 on <b>A5</b>. That uses A4/A5, the I2C pins, so the Uno has no I2C left: one of the limits this project hits on purpose.",
-    check: ["Photoresistor: 5V → leg → A2, 10K A2 → GND", "Water S → A3", "KY-037 A0 → A4", "DHT11 S → A5"] },
-  { title: "Relay and buzzer: the last 595 outputs", parts: ["relay", "buzz"],
-    text: "<b>Q6 → relay</b> and <b>Q7 → buzzer</b> (through 220Ω). All 8 outputs and all 20 Uno pins are now used. Plug in USB, start the Mac bridge, and the LCD switches from \"off\" to the clock.",
-    check: ["Relay S ← Q6", "Buzzer + ← Q7 via 220Ω, − → GND", "USB to the Mac"] },
+  { title: "The LCD: power, contrast, light", parts: ["lcd", "pot"],
+    text: "Put the LCD in the breadboard. Its power pins: <b>VSS, RW, K</b> to GND, <b>VDD</b> to 5V, and the backlight <b>A</b> to 5V through the <b>220Ω</b> resistor. The pot's middle leg goes to <b>V0</b>: it sets the contrast.",
+    check: ["VSS, RW, K → GND; VDD → 5V", "A → 5V through 220Ω", "Pot outer legs → 5V and GND", "Pot middle → V0"] },
+  { title: "The LCD's six data wires", parts: ["lcd"],
+    text: "Six Uno pins in a row, <b>D12 to D7</b>: <b>RS, E, D4, D5, D6, D7</b>. The LCD's D0–D3 stay empty, because it takes 4 bits at a time. Upload now and turn the pot until you see Yaver's face: test early, before more wires hide a mistake.",
+    check: ["RS ← D12, E ← D11", "D4 ← D10, D5 ← D9", "D6 ← D8, D7 ← D7"] },
+  { title: "The talk button", parts: ["btn"],
+    text: "One side to <b>D2</b>, the other to <b>GND</b>. No resistor: the code turns on the Uno's built-in pull-up, so the pin reads HIGH until you press.",
+    check: ["Button side 1 → D2", "Button side 2 → GND"] },
+  { title: "The buzzer", parts: ["buzz"],
+    text: "The <b>passive</b> buzzer (no sticker on top): <b>+ → D5</b>, <b>− → GND</b>. Unlike the active one, it can play any note, so Yaver gets a tune for each mood and alarm.",
+    check: ["Buzzer + → D5", "Buzzer − → GND"] },
+  { title: "The ears, then the Mac", parts: ["sound"],
+    text: "KY-037: <b>AO → A0</b>, <b>+ → 5V</b>, <b>G → GND</b>. Plug the USB cable into the Mac, open the <b>Mini Yaver page</b> in Chrome, click <b>Connect Uno</b>, and clap twice.",
+    check: ["AO → A0", "+ → 5V, G → GND", "USB to the Mac, page open in Chrome"] },
 ];
 
 // ---- The code tour -------------------------------------------------------------------
@@ -177,54 +120,59 @@ const STEPS = [
 // Each section is cut from the real file between two lines (`from` is
 // included, `to` is not). Each note's `hl` lists text whose lines light up.
 const SECTIONS = [
-  { title: "Names for every pin", file: "ino", from: "// ---------------------------------------------------------------- pin map", to: "const bool RELAY_ACTIVE_HIGH",
+  { title: "Names for every pin", file: "ino", from: "// ---------------------------------------------------------------- pins", to: "// ---------------------------------------------------------------- tunables",
     notes: [
-      { t: "Pins get names once, at the top. The rest of the code says <code>PIN_SERVO</code>, never 9, so rewiring means changing one line.", hl: ["PIN_SERVO", "PIN_IR "] },
-      { t: "D4–D7 have no names: the stepper writes them all at once through the <code>PORTD</code> register.", hl: ["D4..D7"] },
-      { t: "The 595's outputs are bits of one byte. <code>0x40</code> is bit 6 (Q6, relay), <code>0x80</code> is bit 7 (Q7, buzzer).", hl: ["SR_RELAY", "SR_BUZZ", "SR_RS", "SR_E "] },
+      { t: "Pins get names once, at the top. The rest of the code says <code>PIN_BUZZER</code>, never 5, so rewiring means changing one line.", hl: ["PIN_BUZZER =", "PIN_BUTTON ="] },
+      { t: "The LCD uses six pins in a row, D12 to D7. <code>LiquidCrystal</code> (built into the Arduino IDE) does the talking.", hl: ["PIN_LCD", "LiquidCrystal lcd("] },
+      { t: "A0 is an analog pin: it reads how loud it is as a number from 0 to 1023.", hl: ["PIN_SOUND"] },
+    ] },
+  { title: "Faces from 8 custom letters", file: "ino", from: "void loadGlyphs(int16_t set) {", to: "// Word-wrap the answer",
+    notes: [
+      { t: "The LCD lets you draw 8 letters of your own, 5×8 dots each. A face is 4 letters wide and 2 high, so one face uses all 8.", hl: ["lcd.createChar(c, g)"] },
+      { t: "The faces live in flash (<code>PROGMEM</code>), not in the 2 KB of RAM. <code>pgm_read_byte</code> reads them out.", hl: ["pgm_read_byte(&FACES"] },
+      { t: "The night clock swaps in a different set: bars and a dot that build big digits.", hl: ["G_BIGFONT"] },
+      { t: "<code>flush()</code> only sends the letters that changed, so blinking costs almost nothing.", hl: ["if (fb[r][c] != shown[r][c])"] },
     ] },
   { title: "loop(): never wait", file: "ino", from: "void loop() {", to: null,
     notes: [
-      { t: "Every part gets a quick turn, every loop. Nothing calls <code>delay()</code>, so a remote press is never missed while the motor turns.", hl: ["pollSerial();", "pollIr();", "pollJoystick", "pollRfid", "serviceStepper", "serviceServo", "serviceBeeper"] },
-      { t: "Slow jobs use a timestamp: <code>now - tSensors >= 250</code> means \"if 250 ms have passed\". That's how you do many things at different speeds.", hl: ["tSensors >= 250", "tDht >= 2000", "tReport >= 5000", "tLog >= LOG_EVERY_MS"] },
-      { t: "The DHT11 waits while the stepper moves: the sensor turns interrupts off, which would make the motor stutter.", hl: ["!stepperBusy"] },
-      { t: "The loop times itself. The STATS screen shows loops per second and the slowest loop, so you can watch the Uno get busy.", hl: ["loopCount++", "maxLoopUs"] },
+      { t: "Every job gets a quick turn, every loop. Nothing calls <code>delay()</code>, so a clap or a press is never missed while a tune plays.", hl: ["pollSerial();", "pollButton(now);", "pollSound(now);", "serviceTune(now);"] },
+      { t: "Slower jobs use a timestamp: <code>now - tAlarm >= 500</code> means \"if half a second has passed\".", hl: ["tAlarm >= 500", "tDraw >= 100"] },
+      { t: "If the page goes quiet for 20 s, the Uno shows \"page offline\" but keeps the clock and alarms going.", hl: ["lastPageMs > 20000"] },
     ] },
-  { title: "LCD through the 74HC595", file: "ino", from: "void srWrite(uint8_t bits) {", to: "void lcdInit() {",
+  { title: "The button and the double clap", file: "ino", from: "// Button with debounce", to: "// ---------------------------------------------------------------- messages from the page",
     notes: [
-      { t: "<code>srWrite</code> shifts 8 bits out over SPI, then a HIGH-LOW on the latch makes Q0–Q7 change together.", hl: ["SPI.transfer(bits)", "PIN_LATCH, HIGH", "PIN_LATCH, LOW"] },
-      { t: "The LCD takes 4 bits at a time. They sit on Q2–Q5, hence <code>&lt;&lt; 2</code>. RS says \"letter\" or \"command\".", hl: ["(n & 0x0F) << 2"] },
-      { t: "The relay and buzzer bits are kept as they were, so writing to the LCD never clicks the lamp off.", hl: ["srBits & (SR_RELAY | SR_BUZZ)"] },
-      { t: "E high then low: the LCD reads the 4 bits on the falling edge. One byte = two halves.", hl: ["srWrite(b | SR_E)", "srWrite(b);", "lcdNibble(v >> 4", "lcdNibble(v, rs)"] },
+      { t: "A button bounces: one press looks like several for a few ms. Ignoring changes closer than 25 ms fixes that.", hl: ["now - btnChange > 25"] },
+      { t: "Short press on release, hold after 800 ms: one button, two jobs.", hl: ["!holdFired", "now - btnSince >= HOLD_MS"] },
+      { t: "Loudness is the swing between the lowest and highest reading in 30 ms. A clap is a big swing.", hl: ["uint16_t swing = sMax - sMin", "swing < CLAP_LEVEL"] },
+      { t: "Two claps 150–700 ms apart = talk. One clap alone (a door, a cough) does nothing, and Yaver ignores claps while its own buzzer plays.", hl: ["gap < 700", "quietTime"] },
     ] },
-  { title: "Stepper in one write", file: "ino", from: "// ---- stepper: non-blocking", to: "int16_t panDeg()",
+  { title: "Alarms that ring without the Mac", file: "ino", from: "void startRing(uint8_t i) {", to: "// ---------------------------------------------------------------- input",
     notes: [
-      { t: "8 coil patterns, one per half-step. <code>0x3</code> means coils 1 and 2 on together.", hl: ["halfSteps[8]"] },
-      { t: "One half-step per call, only when <code>STEP_US</code> has passed. The loop keeps running between steps.", hl: ["< STEP_US"] },
-      { t: "The power rule: if the servo is on, the stepper waits (USB gives only 500 mA).", hl: ["head.attached()) return"] },
-      { t: "The trick: D4–D7 are the top 4 bits of <code>PORTD</code>. One line sets all four coils; <code>&amp; 0x0F</code> keeps D0–D3 (USB, IR, button) untouched.", hl: ["PORTD = (PORTD & 0x0F)", "PORTD &= 0x0F"] },
-      { t: "<code>panTo</code> just sets a target in steps. 4096 steps = 360°.", hl: ["stepTarget = (int32_t)deg"] },
+      { t: "Each kind has its own tune: timer, reminder or wake-up. It loops until you press.", hl: ["TUNE_TIMER : k == 'R'"] },
+      { t: "Hold = snooze: the same alarm comes back in 300 s.", hl: ["nowSec() + 300"] },
+      { t: "An everyday alarm moves to tomorrow (+86400 s) instead of being deleted.", hl: ["a.at += 86400UL"] },
+      { t: "Every change is saved in EEPROM, so alarms survive a reset. One missed by over an hour (the Uno was off) is skipped, not rung late.", hl: ["saveAlarms();", "t - a.at > 3600"] },
     ] },
-  { title: "Talking to the Mac", file: "ino", from: "void handleLine(char* line) {", to: "void reportStatus() {",
+  { title: "Talking to the page", file: "ino", from: "void handleLine(char* line) {", to: "void pollSerial() {",
     notes: [
-      { t: "Each line from the Mac starts with two letters: <code>AB</code> answer begins, <code>A </code> a piece of it, <code>AE</code> answer done.", hl: ["'A' && line[1] == 'B'", "'A' && line[1] == ' '", "'A' && line[1] == 'E'"] },
-      { t: "Other commands move the hardware: <code>RL</code> relay, <code>PN</code> pan, <code>ND</code> nod, <code>BP</code> beep. That's how the AI switches the lamp.", hl: ["PSTR(\"RL\")", "PSTR(\"PN\")", "PSTR(\"ND\")", "PSTR(\"BP\")"] },
-      { t: "After every line the Uno answers <code>K</code>. The Uno only buffers 64 bytes, so the Mac waits for K before sending more. Without it, letters get lost.", hl: ["Serial.println('K')"] },
-      { t: "<code>pollSerial</code> collects letters until a newline, then hands over the whole line.", hl: ["if (c == '\\n')"] },
+      { t: "Each line from the page starts with two letters. <code>TM</code> sets the clock, <code>ST</code> the mood (listening, thinking, speaking).", hl: ["PSTR(\"TM\")", "PSTR(\"ST\")"] },
+      { t: "The answer comes in pieces: <code>AB</code> begins, <code>A </code> adds up to 40 letters, <code>AE</code> shows it.", hl: ["'A' && line[1] == 'B'", "'A' && line[1] == ' '", "'A' && line[1] == 'E'"] },
+      { t: "<code>AL</code> sets a timer, alarm or reminder; the Uno keeps it and rings it itself.", hl: ["PSTR(\"AL\")", "setAlarm(id, at, kind, p)"] },
+      { t: "After every line the Uno answers <code>K</code>. It can only hold 64 bytes, so the page waits for K before sending more.", hl: ["Serial.println('K')"] },
     ] },
-  { title: "RFID cards remembered in EEPROM", file: "ino", from: "void pollRfid(uint32_t now) {", to: "// ================================================================= serial from the Mac",
+  { title: "The brain: hear, think, speak", file: "js", from: "async function conversation() {", to: "function finish()",
     notes: [
-      { t: "Check for a card only every 150 ms: the reader is slow and the loop has other work.", hl: ["now - tRfid < 150"] },
-      { t: "The same card held still is ignored for 1.5 s, so one tap is one question.", hl: ["now - lastCardMs < 1500"] },
-      { t: "A known card: read its saved digit from EEPROM and ask that question.", hl: ["EEPROM.read(EE_CARDS", "ask(action)"] },
-      { t: "A new card: remember it and wait for a digit on the remote. EEPROM keeps it after power-off; 16 cards fit.", hl: ["pendingBindSlot = freeSlot", "Card memory full"] },
+      { t: "<code>ST L</code> first: the Uno shows the listening face and beeps. Then Chrome listens through the Mac's microphone.", hl: ["uno.send(\"ST L\")", "await listen()"] },
+      { t: "While Gemini thinks, the Uno shows what it heard and the thinking face.", hl: ["uno.send(\"ST T\")", "await think(question)"] },
+      { t: "The answer goes to the LCD in pieces, then Yaver says it out loud in the Charon voice.", hl: ["await toLcd(answer)", "speaker.say(answer)"] },
+      { t: "<code>ST I</code> when the voice is done: the Uno smiles and goes back to the clock.", hl: ["uno.send(\"ST I\")", "finish();"] },
     ] },
-  { title: "The Mac bridge (Python)", file: "py", from: "def answer(uno, key, prompt):", to: "# ------------------------------------------------------------------ main",
+  { title: "Tools: what the AI can do", file: "js", from: "const TOOLS = [", to: "function system()",
     notes: [
-      { t: "<code>TH</code> first: the Uno shows the thinking face and nods while the AI works.", hl: ["uno.send(\"TH\")"] },
-      { t: "Ask Gemini with the live sensor readings, so \"how is my room?\" gets a real answer.", hl: ["reply = ask_ai("] },
-      { t: "The AI can add tags like <code>[LAMP ON]</code>. The bridge turns them into commands and strips them from the text.", hl: ["run_tags(reply, uno)"] },
-      { t: "Cut to what fits in the Uno's 640-letter buffer, then send it in 40-letter pieces between <code>AB</code> and <code>AE</code>. Each <code>send</code> waits for the Uno's K.", hl: ["uno.cap", "uno.send(\"AB\")", "uno.send(\"A \" + text", "uno.send(\"AE\")"] },
+      { t: "Each tool is a name, a description and its inputs. Gemini reads these and decides when to use one: \"tea in 5 minutes\" becomes <code>set_timer</code>.", hl: ["name: \"set_timer\"", "name: \"set_alarm\"", "name: \"set_reminder\""] },
+      { t: "<code>run</code> does the real work: here it sends <code>AL</code> to the Uno, which keeps the timer.", hl: ["run: ({ minutes", "addAlarm(atTime(time)"] },
+      { t: "The weather comes from Open-Meteo: free, no key needed.", hl: ["name: \"get_weather\"", "weather(p)"] },
+      { t: "\"Good night\" turns on the big night clock.", hl: ["name: \"sleep_clock\"", "SL ${on"] },
     ] },
 ];
 
@@ -298,14 +246,14 @@ export class MiniYaver {
   render() {
     this.el.innerHTML = `
       <div class="my-head">
-        <div><h1>Mini Yaver</h1><p class="ac-lead">Your Uno as a desk AI: ask with the remote or a card, the Mac asks the AI, the answer scrolls on the LCD. 18 parts, all 20 pins.</p></div>
+        <div><h1>Mini Yaver</h1><p class="ac-lead">Your Uno as a desk AI with five parts: clap or press to talk, the Mac listens, thinks and speaks, the LCD shows Yaver's face, timers and the answer.</p></div>
         <div class="my-tabs" role="tablist">
           <a class="ac-btn" href="#academy/mini-yaver/3d">1 · 3D build</a>
           <button class="ac-btn ${this.tab === "wires" ? "primary" : ""}" data-my="tab:wires" role="tab">📋 Wire list</button>
           <button class="ac-btn ${this.tab === "wiring" ? "primary" : ""}" data-my="tab:wiring" role="tab">Wiring map</button>
           <button class="ac-btn ${this.tab === "code" ? "primary" : ""}" data-my="tab:code" role="tab">2 · Code</button>
           <a class="ac-btn ghost" href="${FILES_URL}MiniYaver/MiniYaver.ino" download>⬇ Sketch</a>
-          <a class="ac-btn ghost" href="${FILES_URL}mini_yaver_bridge.py" download>⬇ Mac bridge</a>
+          <a class="ac-btn ghost" href="${FILES_URL}" target="_blank" rel="noopener">🧠 Open the brain page</a>
         </div>
       </div>
       <div class="my-body"></div>`;
@@ -398,7 +346,6 @@ export class MiniYaver {
         <text class="my-uno-sub" x="402" y="392" text-anchor="middle">POWER</text>
       </g>
       ${wires}${parts}${unoPins}
-      <text class="my-note" x="150" y="207" text-anchor="middle">220Ω</text>
     </svg>`;
   }
 
@@ -419,7 +366,7 @@ export class MiniYaver {
       return `<h3>Pin ${esc(f.pin)}</h3><p>${esc(PIN_NOTE[f.pin] ?? "")}</p>${goes ? `<ul class="my-list">${goes}</ul>` : ""}
         <button class="ac-btn ghost" data-my="pin:${f.pin}">✕ Back to step ${this.step + 1}</button>`;
     }
-    if (f?.all) return `<h3>Everything wired</h3><p>All 28 signal wires. Click a part or a pin to follow its wires.</p><button class="ac-btn ghost" data-my="step:${this.step}">✕ Back to step ${this.step + 1}</button>`;
+    if (f?.all) return `<h3>Everything wired</h3><p>All ${WIRES.length} signal wires. Click a part or a pin to follow its wires.</p><button class="ac-btn ghost" data-my="step:${this.step}">✕ Back to step ${this.step + 1}</button>`;
     return null;
   }
 
@@ -454,7 +401,7 @@ export class MiniYaver {
 
   async file(kind) {
     if (!this.files[kind]) {
-      const url = kind === "py" ? BRIDGE_URL : SKETCH_URL;
+      const url = kind === "js" ? BRAIN_URL : SKETCH_URL;
       this.files[kind] = fetch(url).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); }).then((t) => t.split("\n"));
       this.files[kind].catch(() => { delete this.files[kind]; });
     }
@@ -471,7 +418,7 @@ export class MiniYaver {
         <pre class="my-src" data-hand-scroll><span class="code-line">Loading the code…</span></pre>
       </div>
       <div class="my-side" data-hand-scroll>
-        <h2><span>${sec.file === "py" ? "mini_yaver_bridge.py · on the Mac" : "MiniYaver.ino · on the Uno"}</span>${esc(sec.title)}</h2>
+        <h2><span>${sec.file === "js" ? "mini-yaver/app.js · in Chrome on the Mac" : "MiniYaver.ino · on the Uno"}</span>${esc(sec.title)}</h2>
         <p class="tip">Click a note to light up its lines.</p>
         <ol class="my-notes">${sec.notes.map((n, i) => `<li class="${this.note === i ? "on" : ""}" data-my="note:${i}" role="button" tabindex="0">${n.t}</li>`).join("")}</ol>
         <nav class="ac-nav">

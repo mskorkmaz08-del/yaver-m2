@@ -9,13 +9,11 @@
 //
 // It checks:
 //  1. every Uno pin the sketch uses goes to the right part pin, and nothing else;
-//  2. the 74HC595 outputs match the sketch's bits (Q0 RS ... Q7 buzzer);
-//  3. every part has power and ground, the RFID reader on 3.3 V only, and no
-//     net joins 5V, 3V3 and GND;
-//  4. the breadboard as laid out (holes, columns, rails, hub columns) joins
-//     exactly the pins the wire plan joins: no missing and no extra connections;
-//  5. one jumper per Uno socket and one plug per hole;
-//  6. in the 3D view no two wires come within 0.15 cm of each other
+//  2. every part has power and ground, and no net joins 5V and GND;
+//  3. the breadboard as laid out (holes, columns, rails) joins exactly the
+//     pins the wire plan joins: no missing and no extra connections;
+//  4. one jumper per Uno socket and one plug per hole;
+//  5. in the 3D view no two wires come within 0.15 cm of each other
 //     (each wire is 0.14 thick), so none touch or hide inside another.
 import fs from "fs";
 import { createRequire } from "module";
@@ -30,22 +28,12 @@ const ino = fs.readFileSync(new URL("../mini-yaver/MiniYaver/MiniYaver.ino", imp
 // What the sketch says.
 const pin = (v) => (v.startsWith("A") ? v : `D${v}`);
 const P = Object.fromEntries([...ino.matchAll(/const uint8_t (PIN_\w+)\s*=\s*(A?\d+);/g)].map((m) => [m[1], pin(m[2])]));
-const bit = (name) => Math.log2(Number(ino.match(new RegExp(`const uint8_t ${name}\\s*=\\s*(0x[0-9A-Fa-f]+)`))[1]));
 const expected = {
   // Uno pins, from the sketch's pin map.
-  "IR.OUT": P.PIN_IR, "JS.SW": P.PIN_JOY_SW, "SR.STCP": P.PIN_LATCH, "SV.SIG": P.PIN_SERVO, "RF.SDA": P.PIN_RFID_SS,
-  "JS.VRx": P.PIN_JOY_X, "JS.VRy": P.PIN_JOY_Y, "LDR.2": P.PIN_LIGHT, "WS.S": P.PIN_WATER, "MIC.AO": P.PIN_SOUND, "DHT.S": P.PIN_DHT,
-  // Hardware SPI on the Uno (the sketch uses SPI.h); the stepper on PORTD bits 4-7.
-  "SR.DS": "D11", "RF.MOSI": "D11", "RF.MISO": "D12", "SR.SHCP": "D13", "RF.SCK": "D13",
-  "ST.IN1": "D4", "ST.IN2": "D5", "ST.IN3": "D6", "ST.IN4": "D7",
-  // 74HC595 outputs, from the sketch's bits. lcdNibble shifts the nibble by 2: Q2..Q5 = D4..D7.
-  "LCD.RS": `SR.Q${bit("SR_RS")}`, "LCD.E": `SR.Q${bit("SR_E")}`, "LCD.D4": "SR.Q2", "LCD.D5": "SR.Q3", "LCD.D6": "SR.Q4", "LCD.D7": "SR.Q5",
-  "RL.S": `SR.Q${bit("SR_RELAY")}`, "RZ.1": `SR.Q${bit("SR_BUZZ")}`,
-  // RST tied high: the sketch passes MFRC522::UNUSED_PIN and resets it by software.
-  "RF.3.3V": "3V3", "RF.RST": "3V3",
+  "LCD.RS": P.PIN_LCD_RS, "LCD.E": P.PIN_LCD_E, "LCD.D4": P.PIN_LCD_D4, "LCD.D5": P.PIN_LCD_D5, "LCD.D6": P.PIN_LCD_D6, "LCD.D7": P.PIN_LCD_D7,
+  "BTN.1": P.PIN_BUTTON, "BZ.+": P.PIN_BUZZER, "MIC.AO": P.PIN_SOUND,
 };
-if (!/UNUSED_PIN/.test(ino)) expected["RF.RST"] = null;
-if (!/\(n & 0x0F\) << 2/.test(ino)) throw new Error("lcdNibble no longer shifts by 2: update the LCD data pins in this test");
+if (!/INPUT_PULLUP/.test(ino)) throw new Error("the button no longer uses INPUT_PULLUP: it would need a resistor in this test");
 for (const [k, v] of Object.entries(expected)) if (v === undefined) throw new Error(`no value for ${k} in the sketch`);
 
 const browser = await playwright.chromium.launch(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {});
@@ -73,7 +61,7 @@ const report = await page.evaluate((expected) => {
   const pins = [...new Set(plan.wires.flatMap((w) => [key(w.from), key(w.to)]))];
   const net = (k) => pins.filter((q) => L.f(q) === L.f(k));
 
-  // 1, 2: signal pins
+  // 1: signal pins
   for (const [k, want] of Object.entries(expected)) {
     if (want === null) continue;
     const target = want.includes(".") ? want : `BOARD.${want}`;
@@ -83,24 +71,23 @@ const report = await page.evaluate((expected) => {
   for (const p of pins.filter((q) => q.startsWith("BOARD.") && !/5V|GND|3V3/.test(q))) {
     const want = Object.entries(expected).filter(([, v]) => `BOARD.${v}` === p).map(([k]) => k).sort();
     const got = net(p).filter((q) => q !== p).sort();
-    // The light divider also joins the 10K resistor.
-    const extra = got.filter((q) => !want.includes(q) && !(p === `BOARD.${expected["LDR.2"]}` && q === "R10.1"));
+    const extra = got.filter((q) => !want.includes(q));
     if (extra.length || want.some((q) => !got.includes(q))) fails.push(`${p}: has ${got.join(" ")}, sketch expects ${want.join(" ")}`);
   }
-  // 3: power
-  const five = L.f("BOARD.5V"), gnd = L.f("BOARD.GND"), v33 = L.f("BOARD.3V3");
-  if (five === gnd || five === v33 || gnd === v33) fails.push("a short between 5V, 3V3 and GND");
-  // Every powered part has a pin on 5V and a pin on GND.
-  for (const part of ["SR", "LCD", "IR", "JS", "SV", "ST", "WS", "MIC", "DHT", "RL"]) {
+  // 2: power
+  const five = L.f("BOARD.5V"), gnd = L.f("BOARD.GND");
+  if (five === gnd) fails.push("a short between 5V and GND");
+  // Every powered part has a pin on 5V and a pin on GND; the button and buzzer only need GND.
+  for (const part of ["LCD", "MIC", "POT"]) {
     const mine = pins.filter((q) => q.startsWith(`${part}.`));
     if (!mine.some((q) => L.f(q) === five)) fails.push(`${part} has no 5V`);
     if (!mine.some((q) => L.f(q) === gnd)) fails.push(`${part} has no GND`);
   }
-  if (L.f("RF.3.3V") !== v33 || L.f("RF.GND") !== gnd) fails.push("RFID power is wrong");
-  if (net("RF.3.3V").some((q) => q === "BOARD.5V")) fails.push("RFID on 5 V");
-  for (const [a, b] of [["SR.MR", five], ["SR.OE", gnd], ["LCD.RW", gnd], ["LCD.K", gnd], ["BZ.-", gnd]]) if (L.f(a) !== b) fails.push(`${a} is on the wrong net`);
+  for (const [a, b] of [["LCD.VSS", gnd], ["LCD.VDD", five], ["LCD.RW", gnd], ["LCD.K", gnd], ["RB.2", five], ["BTN.2", gnd], ["BZ.-", gnd], ["MIC.G", gnd], ["MIC.+", five]]) if (L.f(a) !== b) fails.push(`${a} is on the wrong net`);
+  if (L.f("LCD.A") !== L.f("RB.1")) fails.push("the backlight doesn't go through the 220 Ω");
+  if (L.f("LCD.V0") !== L.f("POT.W")) fails.push("V0 isn't on the pot's middle leg");
 
-  // ---- 4: the breadboard as built
+  // ---- 3: the breadboard as built
   const B = uf();
   const half = (r) => (r < 5 ? 0 : 1);
   const node = (e) => e.kind === "hole" ? `H${e.c}:${half(e.r)}` : e.kind === "rail" ? `R${e.line}${e.pin}` : e.kind === "board" ? `B${/^GND/.test(e.pin) ? "GND" : e.pin}` : `P${e.part}.${e.pin}`;
@@ -123,7 +110,7 @@ const report = await page.evaluate((expected) => {
   // Rails: + lines must be on 5V, − lines on GND.
   for (const e of bench.wires.filter((x) => !x.skip).flatMap((x) => [x.a, x.b])) if (e.kind === "rail" && B.f(`R${e.line}${e.pin}`) !== B.f(e.pin === "+" ? "B5V" : "BGND")) fails.push(`${e.name} is not on ${e.pin === "+" ? "5V" : "GND"}`);
 
-  // ---- 5: one jumper per socket, one plug per hole
+  // ---- 4: one jumper per socket, one plug per hole
   const ends = bench.wires.filter((x) => !x.skip).flatMap((x) => [x.a, x.b]).concat(bench.bridges.flatMap((x) => [x.a, x.b]));
   const seen = new Map();
   for (const e of ends) {
@@ -133,7 +120,7 @@ const report = await page.evaluate((expected) => {
   for (const [k, h] of bench.holes) { const id = `hole ${"abcdefghij"[h.r]}${h.c + 1}`; if (seen.has(id)) fails.push(`${id} has a leg of ${k} and a wire`); }
   for (const [id, n] of seen) if (n > 1) fails.push(`${id} has ${n} plugs`);
 
-  // ---- 6: wires in 3D
+  // ---- 5: wires in 3D
   const tubes = [];
   st.wires.forEach((g, i) => g.traverse((m) => { if (m.isMesh && m.geometry.type === "TubeGeometry") tubes.push({ i, m, name: m.parent === g ? `${i + 1}` : `${i + 1}a` }); }));
   const S = tubes.map(({ m }) => { m.updateMatrixWorld(true); const c = m.geometry.parameters.path, n = Math.ceil(c.getLength() / 0.04), out = []; for (let k = 0; k <= n; k++) out.push(c.getPointAt(k / n).applyMatrix4(m.matrixWorld)); return out; });
