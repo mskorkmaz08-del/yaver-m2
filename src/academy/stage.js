@@ -3,7 +3,7 @@
 // picking. Units are centimetres, so parts are modelled at their real size.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { tween, ease, stopTweens } from "./anim.js?v=27";
+import { tween, ease, stopTweens } from "./anim.js?v=28";
 
 const tmp = new THREE.Vector3();
 

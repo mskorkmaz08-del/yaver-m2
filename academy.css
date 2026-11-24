@@ -434,3 +434,7 @@ i.band { border-radius: 2px; width: 8px; height: 14px; vertical-align: -3px; mar
   .my-wirebody .sp-table td:last-child, .sp-table th { color: #333 !important; background: none !important; }
   .my-wirebody button { display: none; }
 }
+
+/* A card that opens a page (the Mini Yaver brain page) looks like the others. */
+a.ac-card { color: inherit; text-decoration: none; border: 1px solid var(--line); cursor: pointer; }
+a.ac-card:hover { border-color: var(--accent); }

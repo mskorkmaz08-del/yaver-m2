@@ -3,22 +3,22 @@
 // it is opened from Yaver's home screen. Hands (through the webcam) or the
 // mouse drive everything: pinch to press buttons and grab parts, move to
 // turn the view, both hands to zoom, and an open-hand swipe to change step.
-import { Stage } from "./stage.js?v=27";
-import { stepTweens, tweening } from "./anim.js?v=27";
-import { LessonContext } from "./course.js?v=27";
-import { ELECTRONICS } from "./lessons-electronics.js?v=27";
-import { ARDUINO } from "./lessons-arduino.js?v=27";
-import { ESP32 } from "./lessons-esp32.js?v=27";
-import { Simulator, buildRobot } from "./sim.js?v=27";
-import { HandInput } from "../handinput.js?v=27";
-import { projectLesson } from "./project.js?v=27";
-import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=27";
-import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=27";
-import { PIANO } from "./project-examples.js?v=27";
-import { KIT, kitPlan } from "./kit.js?v=27";
-import { isOn, onSwitch } from "../switches.js?v=27";
-import { MiniYaver } from "./miniyaver.js?v=27";
-import { miniPlan } from "./miniyaver-3d.js?v=27";
+import { Stage } from "./stage.js?v=28";
+import { stepTweens, tweening } from "./anim.js?v=28";
+import { LessonContext } from "./course.js?v=28";
+import { ELECTRONICS } from "./lessons-electronics.js?v=28";
+import { ARDUINO } from "./lessons-arduino.js?v=28";
+import { ESP32 } from "./lessons-esp32.js?v=28";
+import { Simulator, buildRobot } from "./sim.js?v=28";
+import { HandInput } from "../handinput.js?v=28";
+import { projectLesson } from "./project.js?v=28";
+import { planProject, checkPlan, savedProjects, saveProject, deleteProject, saveClaudeKey } from "./planner.js?v=28";
+import { saveKey as saveGeminiKey } from "../assistant/keys.js?v=28";
+import { PIANO } from "./project-examples.js?v=28";
+import { KIT, kitPlan } from "./kit.js?v=28";
+import { isOn, onSwitch } from "../switches.js?v=28";
+import { MiniYaver } from "./miniyaver.js?v=28";
+import { miniPlan } from "./miniyaver-3d.js?v=28";
 
 const VERSION = new URL(import.meta.url).searchParams.get("v") ?? "dev";
 export const MODULES = [ELECTRONICS, ARDUINO, ESP32];
@@ -143,10 +143,11 @@ function miniBlock() {
     <div class="kit-block">
       <h2><span>Project</span>Mini Yaver: AI on your Uno</h2>
       <div class="ac-cards">
-        <button class="ac-card ac-sim-card" data-mini="3d"><b class="ac-num">🧊</b><span><strong>1. Build it in 3D</strong><small>Your kit's real parts on a breadboard, 8 steps. Every wire end is labelled with its pin.</small></span></button>
+        <button class="ac-card ac-sim-card" data-mini="3d"><b class="ac-num">🧊</b><span><strong>1. Build it in 3D</strong><small>Five parts on a breadboard, 6 steps: LCD face, button, buzzer, sound sensor. Every wire end is labelled with its pin.</small></span></button>
         <button class="ac-card ac-sim-card" data-mini="wires"><b class="ac-num">📋</b><span><strong>Wire list</strong><small>Every jumper numbered: from, to, colour and the hole it plugs into. Printable.</small></span></button>
         <button class="ac-card ac-sim-card" data-mini="wiring"><b class="ac-num">🔌</b><span><strong>Wiring map</strong><small>The same circuit flat: click any part or Uno pin to follow its wires.</small></span></button>
-        <button class="ac-card ac-sim-card" data-mini="code"><b class="ac-num">💻</b><span><strong>2. Understand the code</strong><small>The real sketch and Mac bridge, 7 short sections.</small></span></button>
+        <button class="ac-card ac-sim-card" data-mini="code"><b class="ac-num">💻</b><span><strong>2. Understand the code</strong><small>The Uno sketch and the brain page, 8 short sections.</small></span></button>
+        <a class="ac-card ac-sim-card" href="mini-yaver/" target="_blank" rel="noopener"><b class="ac-num">🧠</b><span><strong>3. Talk to it</strong><small>Open the brain page in Chrome, connect the Uno, clap twice.</small></span></a>
       </div>
     </div>`;
 }

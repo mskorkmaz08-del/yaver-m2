@@ -5,9 +5,9 @@
 // The chart is a pin table, not a picture: every wire is one straight
 // horizontal line in its own row, from a pin on the left to a pin on the
 // right, so no two wires can cross or cover each other.
-import { miniPlan } from "./miniyaver-3d.js?v=27";
-import { benchPlan, withBreadboard } from "./bench.js?v=27";
-import { WIRE_COLORS } from "./parts.js?v=27";
+import { miniPlan } from "./miniyaver-3d.js?v=28";
+import { benchPlan, withBreadboard } from "./bench.js?v=28";
+import { WIRE_COLORS } from "./parts.js?v=28";
 
 const esc = (t) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -17,18 +17,12 @@ const DARK = new Set(["black", "brown"]);
 
 // Why each Uno pin, in one line.
 const PIN_WHY = {
-  D2: "Interrupt INT0: no remote press is missed.",
-  D3: "Interrupt INT1: the button is caught even while the LCD is busy.",
-  D4: "D4–D7 are bits 4–7 of PORTD: one write moves all four coils.",
-  D8: "Latch: a rising edge copies the 8 shifted bits to Q0–Q7.",
-  D9: "Driven by the Servo library on Timer1.",
-  D10: "The RFID's own select line: LOW means \"RFID, listen\".",
-  D11: "SPI data out (MOSI), shared by the 595 and the RFID reader.",
-  D12: "SPI data in (MISO): only the RFID reader talks back.",
-  D13: "SPI clock (SCK), shared by the 595 and the RFID reader.",
-  A0: "Joystick left/right.", A1: "Joystick up/down.", A2: "Light: the middle of the LDR + 10K divider.",
-  A3: "Water level.", A4: "Sound, read every loop to catch claps.", A5: "DHT11, used as a digital pin.",
-  "3V3": "3.3 V for the RFID reader only. 5 V would damage it.",
+  D2: "The talk button: the built-in pull-up keeps it HIGH until pressed.",
+  D5: "The buzzer: tone() plays notes on it.",
+  D7: "LCD D7.", D8: "LCD D6.", D9: "LCD D5.", D10: "LCD D4.",
+  D11: "LCD E: a pulse means \"read now\".",
+  D12: "LCD RS: letter or command.",
+  A0: "Sound: read all the time to catch a double clap.",
 };
 const PIN_ORDER = ["5V", "GND", "3V3", ...Array.from({ length: 14 }, (_, i) => `D${i}`), ...Array.from({ length: 6 }, (_, i) => `A${i}`)];
 
@@ -88,7 +82,7 @@ function groups() {
     else parts.push(r);
   }
   uno.sort((a, b) => PIN_ORDER.indexOf(a.pin) - PIN_ORDER.indexOf(b.pin) || (a.r.n.endsWith("a") ? -1 : 0) - (b.r.n.endsWith("a") ? -1 : 0));
-  // A part-to-part wire reads from the 595 (or the side nearer the Uno) to the part.
+  // A part-to-part wire reads from the side nearer the Uno to the part.
   const srFirst = (r) => (r.to.part === "SR" ? { ...r, from: r.to, to: r.from, fromText: r.toText, toText: r.fromText } : r);
   parts.sort((a, b) => (b.from.part === "SR" || b.to.part === "SR") - (a.from.part === "SR" || a.to.part === "SR"));
   return { uno, parts: parts.map(srFirst), plus, minus };
@@ -119,7 +113,7 @@ export function chartHTML() {
   return `
     <div class="ch-legend">Each line is one jumper wire, in its real colour, numbered as in the 3D build and the wire list. Lines never cross: read across a row. Hover an Uno pin for why that pin.</div>
     <h3>Uno pins → parts</h3>${unoRows}
-    <h3>74HC595 outputs and part to part</h3>${partRows}
+    <h3>Part to part</h3>${partRows}
     <h3>+ rail: Uno 5V</h3>${rail(plus, "+ 5V", "pwr")}
     <h3>− rail: Uno GND</h3>${rail(minus, "− GND", "gnd")}`;
 }
@@ -149,10 +143,9 @@ export function specHTML() {
     </table>
     <h3>Checked against the sketch</h3>
     <ul class="sp-checks">
-      <li>Every Uno pin matches <code>MiniYaver.ino</code>: IR D2, joystick button D3, stepper D4–D7, 595 latch D8, servo D9, RFID select D10, SPI D11–D13, joystick A0/A1, light A2, water A3, sound A4, DHT11 A5.</li>
-      <li>595 outputs match the code's bits: Q0 RS, Q1 E, Q2–Q5 D4–D7, Q6 relay, Q7 buzzer.</li>
-      <li>One jumper per Uno socket: D11, D13 and 3V3 each feed two parts, so each goes to its own breadboard column first.</li>
-      <li>The RFID reader is on 3.3 V only. Its RST is held high on 3V3; the code resets it by software.</li>
+      <li>Every Uno pin matches <code>MiniYaver.ino</code>: LCD RS D12, E D11, D4–D7 on D10–D7, button D2, buzzer D5, sound A0.</li>
+      <li>The button needs no resistor: the sketch uses <code>INPUT_PULLUP</code>, so its other side goes to GND.</li>
+      <li>The buzzer is the passive one (no sticker): the sketch plays notes on it with <code>tone()</code>.</li>
       <li>Some 830-hole breadboards split each power rail in the middle (a break in the red/blue line). If yours does, bridge the gap with a short wire on both rails.</li>
     </ul>`;
 }

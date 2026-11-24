@@ -4,13 +4,13 @@
 // the code line by line, and then runs the sketch against the circuit as
 // wired: buttons can be pressed, the buzzer plays, LEDs light, servos turn.
 import * as THREE from "three";
-import { arduinoUno, esp32, WIRE_COLORS } from "./parts.js?v=27";
-import { stopTweens } from "./anim.js?v=27";
-import { withBreadboard, benchPlan, benchWire, harness, surfaces, holeName } from "./bench.js?v=27";
-import { buildPart } from "./project-parts.js?v=27";
-import { SketchRunner } from "./sketch.js?v=27";
-import { KIT_SHOP, KEYPAD_KEYS } from "./kit-parts.js?v=27";
-import { kitLibs, IR_KEYS, CARDS } from "./kit-sim.js?v=27";
+import { arduinoUno, esp32, WIRE_COLORS } from "./parts.js?v=28";
+import { stopTweens } from "./anim.js?v=28";
+import { withBreadboard, benchPlan, benchWire, harness, surfaces, holeName } from "./bench.js?v=28";
+import { buildPart } from "./project-parts.js?v=28";
+import { SketchRunner } from "./sketch.js?v=28";
+import { KIT_SHOP, KEYPAD_KEYS } from "./kit-parts.js?v=28";
+import { kitLibs, IR_KEYS, CARDS } from "./kit-sim.js?v=28";
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -509,7 +509,7 @@ export function projectLesson(plan, hooks = {}) {
     show: Infinity, lines: st.lines ?? [], code: st.code, stage: i,
   }));
   if (plan.mini) {
-    steps.push({ title: "All wired", text: `<p>All 18 parts and every Uno pin. Each wire runs on its own path, like a line on a chart: up from its plug, along, and straight down, so no two touch. Turn the view to follow any wire: each end is labelled.</p><p><a class="ac-btn" href="#academy/mini-yaver/wires">📋 Wire list</a> every wire numbered: from, to, colour and the hole it plugs into.</p><p class="tip">Next: how the code drives all of this.</p>`, show: Infinity, allTags: true, lines: [] });
+    steps.push({ title: "All wired", text: `<p>All five parts wired. Each wire runs on its own path, like a line on a chart: up from its plug, along, and straight down, so no two touch. Turn the view to follow any wire: each end is labelled.</p><p><a class="ac-btn" href="#academy/mini-yaver/wires">📋 Wire list</a> every wire numbered: from, to, colour and the hole it plugs into.</p><p class="tip">Next: upload the sketch, open the <a href="mini-yaver/" target="_blank" rel="noopener">brain page</a> in Chrome, and see how the code works.</p>`, show: Infinity, allTags: true, lines: [] });
     return lessonObject(plan, hooks, steps, partAt, wireAt);
   }
   if (plan.kit) {
