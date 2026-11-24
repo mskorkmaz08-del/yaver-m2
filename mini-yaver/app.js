@@ -389,26 +389,50 @@ function thinkingOff(model) {
   return {};
 }
 
-// Yaver uses a light, fast Gemini first (it's busy less often, and plenty for
-// short spoken answers). If one is busy (503) or briefly failing, it waits a
-// moment and tries again, then moves on to the next model. The free limit
-// (429) is per model, so that also moves on.
-const MODELS = ["gemini-2.5-flash-lite", "gemini-2.5-flash"];
+// Which Geminis to use, asked from Google itself (model names come and go):
+// the light, fast "flash-lite" ones first (busy less often, and plenty for
+// short spoken answers), then the regular "flash" ones; stable before
+// preview, newest first.
+const FALLBACK_MODELS = ["gemini-2.5-flash-lite", "gemini-2.5-flash"];
+let chatModelList = null;
+async function chatModels() {
+  if (chatModelList) return chatModelList;
+  try {
+    const r = await fetch(`${API}/models?pageSize=200`, { headers: { "x-goog-api-key": brain.key } });
+    const names = ((await r.json()).models || [])
+      .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent"))
+      .map((m) => m.name.replace("models/", ""))
+      .filter((n) => /^gemini-[\d.]+-flash/.test(n) && !/(image|tts|live|audio|embedding|thinking)/.test(n));
+    const ver = (n) => parseFloat((n.match(/gemini-([\d.]+)/) || [0, 0])[1]);
+    const rank = (n) => (/lite/.test(n) ? 0 : 2) + (/preview|exp/.test(n) ? 1 : 0);
+    names.sort((a, b) => rank(a) - rank(b) || ver(b) - ver(a) || a.length - b.length);
+    if (names.length) return (chatModelList = names.slice(0, 6));
+  } catch { /* offline: try the usual names */ }
+  return [...new Set([...FALLBACK_MODELS, brain.model])];
+}
+
+// If a Gemini is busy (503) or briefly failing, wait a moment and try again,
+// then move on to the next model. A model that no longer exists (404) or whose
+// free limit is used up (429) moves on straight away.
 const BUSY = new Set([0, 500, 502, 503, 504]);
 async function gemini(contents) {
-  const models = [...new Set([...MODELS, brain.model])];
   let last = 0;
-  for (const model of models) {
+  for (const model of await chatModels()) {
     for (let attempt = 0; attempt < 2; attempt++) {
       const res = await ask(model, contents);
-      if (res.ok) return (await res.json()).candidates?.[0]?.content ?? { role: "model", parts: [] };
+      if (res.ok) {
+        if (brain.model !== model) { brain.model = model; $("s-brain").textContent = `Brain: Google ${model} (switches to another Gemini by itself if busy)`; }
+        return (await res.json()).candidates?.[0]?.content ?? { role: "model", parts: [] };
+      }
       last = res.status;
-      if (res.status === 429) break;                         // this model's free limit: next model
-      if (!BUSY.has(res.status)) throw new Error(`Gemini said ${res.status}.`);
+      if (!BUSY.has(res.status)) break;                      // 404, 429, ...: next model
       await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
     }
   }
-  throw new Error(last === 429 ? "The free AI limit is used up for now. Try again in a minute." : "Gemini is too busy right now. Try again in a minute.");
+  throw new Error(last === 429 ? "The free AI limit is used up for now. Try again in a minute."
+    : BUSY.has(last) ? "Gemini is too busy right now. Try again in a minute."
+    : last === 400 || last === 403 ? `Gemini refused the request (${last}). Check the key at the top of the page.`
+    : `No Gemini model answered (${last}).`);
 }
 
 async function ask(model, contents, fast = true) {
@@ -679,7 +703,9 @@ async function startBrain() {
   }
   brain = { key: s.geminiKey, model: await pickChatModel(s.geminiKey, s.geminiModel).catch(() => "gemini-2.5-flash") };
   speaker.useGemini(s.geminiKey, s.ttsVoice || "Charon");
-  $("s-brain").textContent = `Brain: Google ${MODELS[0]} (switches to another Gemini by itself if busy)`;
+  const first = (await chatModels())[0];
+  brain.model = first;
+  $("s-brain").textContent = `Brain: Google ${first} (switches to another Gemini by itself if busy)`;
   dot("d-brain", "ok");
   $("keyform").style.display = "none";
 }

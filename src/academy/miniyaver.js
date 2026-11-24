@@ -183,7 +183,7 @@ const SECTIONS = [
     notes: [
       { t: "After the beep, the Uno sends <code>MIC</code>, then every byte is sound, until a <code>0</code>. Lines from the page wait meanwhile.", hl: ["F(\"MIC\")", "Serial.write((uint8_t)0)"] },
       { t: "It only sends as much as the USB has room for, so <code>loop()</code> never blocks.", hl: ["Serial.availableForWrite()"] },
-      { t: "The first 0.2 s learns how loud the room is. Talking is clearly louder than that.", hl: ["t < 200", "recNoise * 2 + MIC_SPEECH"] },
+      { t: "The first 0.2 s learns how loud the room is. Talking is clearly louder than that.", hl: ["t < 200", "recNoise + recNoise / 2 + MIC_SPEECH"] },
       { t: "Almost a second of quiet after you talk ends it; so does 5 s without talking, or 10 s in all. Then <code>ME 1</code> (heard you) or <code>ME 0</code> (nothing).", hl: ["recQuiet * 32 >= MIC_END_MS", "t > MIC_MAX_MS", "F(\"ME \")"] },
     ] },
   { title: "The mood light", file: "ino", from: "// ---------------------------------------------------------------- mood light", to: "// ---------------------------------------------------------------- input",

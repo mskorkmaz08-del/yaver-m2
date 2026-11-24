@@ -57,7 +57,7 @@ LiquidCrystal lcd(PIN_LCD_RS, PIN_LCD_E, PIN_LCD_D4, PIN_LCD_D5, PIN_LCD_D6, PIN
 const uint16_t CLAP_LEVEL   = 120;   // sound jump that counts as a clap. Lower = more sensitive
 const bool     RGB_COMMON_ANODE = false;  // true if your RGB module's shared leg is marked + (it goes to 5V)
 const uint8_t  MIC_GAIN     = 8;     // how much the recording is boosted at first (the page tunes it after each use)
-const uint8_t  MIC_SPEECH   = 6;     // how much louder than the room counts as talking
+const uint8_t  MIC_SPEECH   = 3;     // how much louder than the room counts as talking (lower = more sensitive)
 const uint16_t MIC_END_MS   = 900;   // this much quiet after you talk ends the recording
 const uint16_t MIC_WAIT_MS  = 5000;  // give up if you don't start talking within this
 const uint16_t MIC_MAX_MS   = 10000; // the longest recording
@@ -575,7 +575,7 @@ void serviceRec(uint32_t now) {
   uint32_t t = now - recAt;
   if (t < 200) { if (lvl < recNoise) recNoise = lvl; return; }
   if (recNoise > 30) recNoise = 30;
-  if (lvl > recNoise * 2 + MIC_SPEECH) { if (++recLoud >= 2) recHeard = true; recQuiet = 0; }
+  if (lvl > recNoise + recNoise / 2 + MIC_SPEECH) { if (++recLoud >= 2) recHeard = true; recQuiet = 0; }
   else { recLoud = 0; if (recHeard && recQuiet < 255) recQuiet++; }
   if ((recHeard && recQuiet * 32 >= MIC_END_MS) || (!recHeard && t > MIC_WAIT_MS) || t > MIC_MAX_MS) recFinish();
 }
@@ -646,7 +646,7 @@ void talk() {
   recPending = true;                // record as soon as the beep ends (so it isn't recorded)
 }
 void stopTalk() {
-  if (recOn) { recFinish(); return; }   // "I'm done talking"
+  if (recOn) { if (millis() - recAt > 500) recHeard = true; recFinish(); return; }   // "I'm done talking": send it, even if it sounded quiet
   recPending = false;
   Serial.println(F("STOP"));
   voiceCut();
