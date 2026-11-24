@@ -1,14 +1,14 @@
 /*
-  MINI YAVER v2  -  a small desk AI on an Arduino Uno
+  MINI YAVER v3  -  a small desk AI on an Arduino Uno
   ---------------------------------------------------
   Five parts: Uno, 1602 LCD (with its contrast pot), KY-037 sound sensor,
   passive buzzer, one push button.
 
-  The Uno is Yaver's face, ears-trigger and alarm clock. The brain is the
-  Mini Yaver page in Chrome on the Mac
+  The Uno is Yaver's face, ears-trigger, voice and alarm clock. The brain is
+  the Mini Yaver page in Chrome on the Mac
   (https://mskorkmaz08-del.github.io/yaver-m2/mini-yaver/): it listens
-  through the Mac's microphone, asks Gemini, speaks the answer in Yaver's
-  voice and sends a short version here over USB.
+  through the Mac's microphone, asks Gemini, sends the answer here over USB
+  for the LCD, and streams Yaver's spoken voice to the buzzer.
 
   What the Uno does on its own:
     - shows Yaver's face: idle, blink, listening, thinking, happy, asleep, alarm
@@ -16,6 +16,9 @@
     - timers, alarms and reminders: kept in EEPROM, they ring on the buzzer
       even if the page is closed (as long as the Uno has USB power)
     - double clap or a button press = "Yaver, I'm talking to you"
+    - speaks: the page streams the voice as 8000 numbers a second, and the
+      buzzer plays them (see "voice" below). The buzzer is on D3 for this:
+      D3 is the pin the Uno's Timer2 can drive fast enough to make speech.
 
   Button: short press = talk / stop.  Hold 1 s = sleep clock on or off.
           While ringing: short press = stop, hold = snooze 5 minutes.
@@ -30,7 +33,7 @@
 // ---------------------------------------------------------------- pins
 // D0, D1 : USB to the Mac
 const uint8_t PIN_BUTTON = 2;    // push button; its other leg to GND (uses the built-in pull-up)
-const uint8_t PIN_BUZZER = 5;    // passive buzzer +; its other leg to GND
+const uint8_t PIN_BUZZER = 3;    // passive buzzer +; its other leg to GND (D3: Timer2 plays the voice on it)
 const uint8_t PIN_LCD_D7 = 7;    // the LCD sits on six pins in a row: D12 down to D7
 const uint8_t PIN_LCD_D6 = 8;
 const uint8_t PIN_LCD_D5 = 9;
@@ -138,6 +141,8 @@ const uint16_t TUNE_TIMER[]  PROGMEM = {1568,100, 0,80, 1568,100, 0,80, 1568,100
 const uint16_t TUNE_REMIND[] PROGMEM = {988,120, 1319,220, 0,700, 0,0};
 const uint16_t TUNE_OK[]     PROGMEM = {1175,60, 0,0};
 
+bool voiceActive();                 // true while Yaver's voice plays (see "voice")
+
 const uint16_t* tune = nullptr;
 bool tuneLoop = false;
 uint8_t tuneIdx = 0;
@@ -146,7 +151,7 @@ uint32_t tuneNext = 0, tuneEndedAt = 0;
 void play(const uint16_t* t, bool loop = false) { tune = t; tuneLoop = loop; tuneIdx = 0; tuneNext = 0; }
 void stopTune() { tune = nullptr; noTone(PIN_BUZZER); tuneEndedAt = millis(); }
 void serviceTune(uint32_t now) {
-  if (!tune || now < tuneNext) return;
+  if (!tune || now < tuneNext || voiceActive()) return;
   uint16_t f = pgm_read_word(tune + tuneIdx * 2);
   uint16_t d = pgm_read_word(tune + tuneIdx * 2 + 1);
   if (!d) {                                  // end of the tune
@@ -185,6 +190,112 @@ uint8_t rxLen = 0;
 
 char fb[2][16], shown[2][16];
 int16_t glyphSet = -1;
+
+// ---------------------------------------------------------------- voice
+// Yaver's voice on the buzzer. The page turns the spoken answer into 8000
+// numbers a second (1 to 255; 128 is silence) and streams them over USB.
+//  - Timer2 runs a very fast PWM on D3 (62,500 pulses a second, far too fast
+//    to hear). The buzzer can only follow the average, so the pulse width
+//    (OCR2B) sets where its membrane is: 255 pushed out, 1 pulled in.
+//  - Timer1 interrupts 8000 times a second. Each time it moves the bytes that
+//    arrived into a 512-byte ring, then plays the next one.
+// A 0 byte ends the stream. Flow control: every 64 bytes played, the Uno
+// sends "V", meaning "room for 64 more", so the ring never overflows.
+// The page says "VO" first; when the last sound has played the Uno says "VE".
+#define VRING 512
+#define VCREDIT 64
+#define VPRIME 256                  // wait for this much (32 ms) before playing
+enum : uint8_t { V_OFF, V_STREAM, V_DRAIN, V_CUT, V_DONE };
+volatile uint8_t vState = V_OFF;    // STREAM: taking bytes. DRAIN: got the 0, playing the rest.
+                                    // CUT: stopped, ignoring bytes until the 0. DONE: all played.
+uint8_t vbuf[VRING];
+volatile uint16_t vHead = 0, vTail = 0, vPlayed = 0, vIdle = 0;
+volatile bool vPrimed = false;
+uint32_t vCutAt = 0;
+
+bool voiceActive() { return vState != V_OFF; }
+
+ISR(TIMER1_COMPA_vect) {
+  uint8_t s = vState;
+  if (s == V_STREAM || s == V_CUT) {
+    if (Serial.available()) vIdle = 0; else if (vIdle < 60000) vIdle++;
+    while (Serial.available()) {
+      uint8_t c = Serial.read();
+      if (!c) { s = s == V_CUT ? V_DONE : V_DRAIN; break; }
+      if (s == V_CUT) continue;
+      uint16_t n = vHead + 1;
+      if (n == VRING) n = 0;
+      if (n != vTail) { vbuf[vHead] = c; vHead = n; }
+    }
+    vState = s;
+  }
+  if (s == V_CUT || s == V_DONE) return;
+  uint16_t fill = vHead >= vTail ? vHead - vTail : vHead + VRING - vTail;
+  if (!vPrimed) {
+    if (fill >= VPRIME || (s == V_DRAIN && fill)) vPrimed = true;
+    else { if (s == V_DRAIN) vState = V_DONE; return; }
+  }
+  if (fill) {
+    OCR2B = vbuf[vTail];
+    if (++vTail == VRING) vTail = 0;
+    vPlayed++;
+  } else if (s == V_DRAIN) vState = V_DONE;
+  else vPrimed = false;             // ran dry: hold the sound until a little more arrives
+}
+
+void voiceOn() {
+  if (tune && !tuneLoop) { uint32_t until = millis() + 400; while (tune && millis() < until) serviceTune(millis()); }
+  stopTune();                       // tone() uses Timer2 too
+  vHead = vTail = vPlayed = vIdle = 0;
+  vPrimed = false;
+  OCR2B = 1;
+  TCCR2A = _BV(COM2B1) | _BV(WGM21) | _BV(WGM20);   // fast PWM, D3 follows OCR2B
+  TCCR2B = _BV(CS20);                               // 16 MHz / 256 = 62.5 kHz
+  TCCR1A = 0;
+  TCCR1B = _BV(WGM12) | _BV(CS10);                  // count to OCR1A, then start again
+  OCR1A = F_CPU / 8000 - 1;                         // 8000 times a second
+  TCNT1 = 0;
+  vState = V_STREAM;
+  TIMSK1 = _BV(OCIE1A);
+}
+
+void voiceOff() {
+  TIMSK1 = 0;
+  TCCR2A = 0; TCCR2B = 0;           // hands D3 back to digitalWrite() and tone()
+  digitalWrite(PIN_BUZZER, LOW);
+  vState = V_OFF;
+  tuneEndedAt = millis();
+  Serial.println(F("VE"));
+}
+
+// Stop talking now (the button, or "VX" from the page).
+void voiceCut() {
+  noInterrupts();
+  if (vState == V_STREAM) { vState = V_CUT; vCutAt = millis(); }
+  else if (vState == V_DRAIN) vState = V_DONE;
+  vTail = vHead;
+  interrupts();
+}
+
+void serviceVoice() {
+  if (!voiceActive()) return;
+  lastPageMs = millis();            // the page is busy streaming, not gone
+  for (;;) {                        // tell the page how much room there is
+    noInterrupts();
+    bool room = vPlayed >= VCREDIT;
+    if (room) vPlayed -= VCREDIT;
+    interrupts();
+    if (!room) break;
+    Serial.println('V');
+  }
+  noInterrupts();
+  uint8_t s = vState;
+  uint16_t idle = vIdle;
+  interrupts();
+  // The page went quiet for 3 s mid-stream (closed, or unplugged): give up.
+  if ((s == V_STREAM && idle > 24000) || (s == V_CUT && millis() - vCutAt > 2000)) { vState = V_DONE; s = V_DONE; }
+  if (s == V_DONE) voiceOff();
+}
 
 // ---------------------------------------------------------------- clock
 uint32_t nowSec() { return clockBase + (millis() - clockMs) / 1000; }
@@ -305,7 +416,7 @@ void endRing(bool snooze) {
   setMode(beforeRing);
 }
 void checkAlarms() {
-  if (!clockSet || mode == M_RING) return;
+  if (!clockSet || mode == M_RING || voiceActive()) return;   // an alarm waits for Yaver to finish a sentence
   uint32_t t = nowSec();
   for (uint8_t i = 0; i < MAX_ALARMS; i++) {
     Alarm& a = alarms[i];
@@ -332,6 +443,7 @@ void talk() {
 }
 void stopTalk() {
   Serial.println(F("STOP"));
+  voiceCut();
   stopTune();
   setMode(M_IDLE);
 }
@@ -418,13 +530,19 @@ void handleLine(char* line) {
     strncpy(wx, arg, 12); wx[12] = 0;
   } else if (!strncmp_P(line, PSTR("SL"), 2)) {         // sleep clock on/off
     setMode(arg[0] == '1' ? M_SLEEP : M_IDLE);
+  } else if (!strncmp_P(line, PSTR("VO"), 2)) {         // voice: raw sound bytes follow, ended by a 0
+    if (mode == M_RING || voiceActive()) Serial.println(F("VN"));   // not now: the page uses the Mac's speakers
+    else { voiceOn(); Serial.println('K'); return; }   // ready first, then "go": from here the timer takes the bytes
+  } else if (!strncmp_P(line, PSTR("VX"), 2)) {         // stop talking now
+    voiceCut();
   } else if (!strncmp_P(line, PSTR("HI"), 2)) {
-    Serial.println(F("HELLO MINIYAVER v2"));
+    Serial.println(F("HELLO MINIYAVER v3 VOICE"));
   }
   Serial.println('K');   // "got it": the page waits for this before sending more (the Uno holds only 64 bytes)
 }
 void pollSerial() {
   while (Serial.available()) {
+    if (vState == V_STREAM || vState == V_CUT) return;   // the bytes are sound: the timer takes them
     char c = Serial.read();
     if (c == '\r') continue;
     if (c == '\n') { rx[rxLen] = 0; if (rxLen) handleLine(rx); rxLen = 0; }
@@ -556,7 +674,7 @@ void setup() {
   fbTextP(1, 13, PSTR("svc"));
   flush();
   play(TUNE_BOOT);
-  Serial.println(F("HELLO MINIYAVER v2"));
+  Serial.println(F("HELLO MINIYAVER v3 VOICE"));
   uint32_t until = millis() + 1500;
   while (millis() < until) serviceTune(millis());
   setMode(M_IDLE);
@@ -566,6 +684,7 @@ uint32_t tDraw = 0, tAlarm = 0;
 void loop() {
   uint32_t now = millis();
   pollSerial();
+  serviceVoice();
   pollButton(now);
   pollSound(now);
   serviceTune(now);

@@ -18,7 +18,7 @@ const DARK = new Set(["black", "brown"]);
 // Why each Uno pin, in one line.
 const PIN_WHY = {
   D2: "The talk button: the built-in pull-up keeps it HIGH until pressed.",
-  D5: "The buzzer: tone() plays notes on it.",
+  D3: "The buzzer: Yaver's voice (Timer2), beeps and tunes (tone()).",
   D7: "LCD D7.", D8: "LCD D6.", D9: "LCD D5.", D10: "LCD D4.",
   D11: "LCD E: a pulse means \"read now\".",
   D12: "LCD RS: letter or command.",
@@ -143,9 +143,9 @@ export function specHTML() {
     </table>
     <h3>Checked against the sketch</h3>
     <ul class="sp-checks">
-      <li>Every Uno pin matches <code>MiniYaver.ino</code>: LCD RS D12, E D11, D4–D7 on D10–D7, button D2, buzzer D5, sound A0.</li>
+      <li>Every Uno pin matches <code>MiniYaver.ino</code>: LCD RS D12, E D11, D4–D7 on D10–D7, button D2, buzzer D3, sound A0.</li>
       <li>The button needs no resistor: the sketch uses <code>INPUT_PULLUP</code>, so its other side goes to GND.</li>
-      <li>The buzzer is the passive one (no sticker): the sketch plays notes on it with <code>tone()</code>.</li>
+      <li>The buzzer is the passive one (no sticker): the sketch plays notes on it with <code>tone()</code>, and speech with Timer2 on D3. An active buzzer (sticker on top) only beeps at its own pitch, so it can't speak.</li>
       <li>Some 830-hole breadboards split each power rail in the middle (a break in the red/blue line). If yours does, bridge the gap with a short wire on both rails.</li>
     </ul>`;
 }

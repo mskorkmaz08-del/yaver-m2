@@ -26,7 +26,7 @@ const PIN_NOTE = {
   D0: "USB to the Mac (receive). Wired inside the board to the USB chip, so nothing plugs in here.",
   D1: "USB to the Mac (send). Same as D0: taken by USB.",
   D2: "The talk button. The code turns on the Uno's built-in pull-up, so D2 reads HIGH, and LOW while you press.",
-  D5: "The buzzer. tone() switches it on and off thousands of times a second to play a note.",
+  D3: "The buzzer, and Yaver's voice. tone() plays notes on it; for speech, Timer2 pulses D3 62,500 times a second and the pulse width follows the voice.",
   D7: "LCD D7 (data bit 4 of 4).", D8: "LCD D6 (data bit 3 of 4).", D9: "LCD D5 (data bit 2 of 4).", D10: "LCD D4 (data bit 1 of 4).",
   D11: "LCD E (enable): a short pulse tells the LCD \"read the data pins now\".",
   D12: "LCD RS: HIGH means \"this is a letter\", LOW means \"this is a command\".",
@@ -49,9 +49,9 @@ const PARTS = [
     power: ["outer legs → 5V and GND", "middle leg (W) → LCD V0"],
     note: "The LCD's contrast knob. Too far one way: empty screen. Too far the other: black boxes." },
   { id: "buzz", name: "Passive buzzer", box: [585, 120, 120, 70], color: "#c792ea",
-    pins: { "+": [620, 190] },
+    pins: { "+": [612, 190] },
     power: ["− → GND"],
-    note: "The one without a sticker. tone() makes it play any note: listening, done, timers and alarm tunes." },
+    note: "The one without a sticker. Yaver's voice: the page streams the spoken answer to the Uno, 8000 numbers a second, and the buzzer plays it. tone() plays the beeps and alarm tunes." },
   { id: "btn", name: "Talk button", box: [740, 120, 140, 70], color: "#f78fb3",
     pins: { "1": [760, 190] },
     power: ["other side → GND"],
@@ -63,7 +63,7 @@ const PARTS = [
   { id: "mac", name: "Mac + Chrome", box: [20, 290, 150, 60], color: "#adb5bd",
     pins: {},
     power: ["USB cable", "the Mini Yaver page in Chrome"],
-    note: "The brain. The page hears you through the Mac's microphone, asks Gemini, speaks the answer and sends a short version to the LCD over USB (D0/D1)." },
+    note: "The brain. The page hears you through the Mac's microphone, asks Gemini, and sends the answer over USB (D0/D1): the words for the LCD, then the voice for the buzzer." },
 ];
 const PART = Object.fromEntries(PARTS.map((p) => [p.id, p]));
 
@@ -74,7 +74,7 @@ const WIRES = [
   { from: "D10", to: "lcd.D4", via: 224 }, { from: "D9", to: "lcd.D5", via: 216 },
   { from: "D8", to: "lcd.D6", via: 208 }, { from: "D7", to: "lcd.D7", via: 200 },
   { from: "pot.W", to: "lcd.V0" },
-  { from: "D5", to: "buzz.+", via: 244 },
+  { from: "D3", to: "buzz.+" },
   { from: "D2", to: "btn.1", via: 236 },
   { from: "A0", to: "sound.AO" },
 ];
@@ -108,8 +108,8 @@ const STEPS = [
     text: "One side to <b>D2</b>, the other to <b>GND</b>. No resistor: the code turns on the Uno's built-in pull-up, so the pin reads HIGH until you press.",
     check: ["Button side 1 → D2", "Button side 2 → GND"] },
   { title: "The buzzer", parts: ["buzz"],
-    text: "The <b>passive</b> buzzer (no sticker on top): <b>+ → D5</b>, <b>− → GND</b>. Unlike the active one, it can play any note, so Yaver gets a tune for each mood and alarm.",
-    check: ["Buzzer + → D5", "Buzzer − → GND"] },
+    text: "The <b>passive</b> buzzer (no sticker on top): <b>+ → D3</b>, <b>− → GND</b>. It is Yaver's voice: unlike the active one (which only beeps at its own pitch), it moves however the Uno pushes it, so it can play any note and even speech. D3 matters: it is the pin the Uno's Timer2 can pulse fast enough for a voice.",
+    check: ["Buzzer + → D3", "Buzzer − → GND"] },
   { title: "The ears, then the Mac", parts: ["sound"],
     text: "KY-037: <b>AO → A0</b>, <b>+ → 5V</b>, <b>G → GND</b>. Plug the USB cable into the Mac, open the <b>Mini Yaver page</b> in Chrome, click <b>Connect Uno</b>, and clap twice.",
     check: ["AO → A0", "+ → 5V, G → GND", "USB to the Mac, page open in Chrome"] },
@@ -160,11 +160,19 @@ const SECTIONS = [
       { t: "<code>AL</code> sets a timer, alarm or reminder; the Uno keeps it and rings it itself.", hl: ["PSTR(\"AL\")", "setAlarm(id, at, kind, p)"] },
       { t: "After every line the Uno answers <code>K</code>. It can only hold 64 bytes, so the page waits for K before sending more.", hl: ["Serial.println('K')"] },
     ] },
+  { title: "A voice from a buzzer", file: "ino", from: "// ---------------------------------------------------------------- voice", to: "// ---------------------------------------------------------------- clock",
+    notes: [
+      { t: "A buzzer is a tiny membrane. Push it out and pull it back 8000 times a second by the right amounts and it makes any sound, including speech: that's all a speaker does too.", hl: ["The page turns the spoken answer", "Timer2 runs a very fast PWM"] },
+      { t: "The Uno can't output in-between voltages, so Timer2 switches D3 on and off 62,500 times a second, far too fast to hear. The share of time it's on (<code>OCR2B</code>) is what the membrane follows.", hl: ["TCCR2A = _BV(COM2B1)", "OCR2B = vbuf[vTail]"] },
+      { t: "Timer1 interrupts 8000 times a second, whatever <code>loop()</code> is doing (even redrawing the LCD), so the voice never stutters. Each tick plays one byte.", hl: ["ISR(TIMER1_COMPA_vect)", "OCR1A = F_CPU / 8000 - 1"] },
+      { t: "The bytes wait in a 512-byte ring. The Uno sends <code>V</code> for every 64 played, and the page never sends more than that: no overflow, with only 2 KB of RAM.", hl: ["Serial.println('V')", "#define VRING 512"] },
+      { t: "A <code>0</code> byte means the end; the Uno plays what's left, then says <code>VE</code>. The button cuts it short.", hl: ["if (!c)", "F(\"VE\")", "void voiceCut()"] },
+    ] },
   { title: "The brain: hear, think, speak", file: "js", from: "async function conversation() {", to: "function finish()",
     notes: [
       { t: "<code>ST L</code> first: the Uno shows the listening face and beeps. Then Chrome listens through the Mac's microphone.", hl: ["uno.send(\"ST L\")", "await listen()"] },
       { t: "While Gemini thinks, the Uno shows what it heard and the thinking face.", hl: ["uno.send(\"ST T\")", "await think(question)"] },
-      { t: "The answer goes to the LCD in pieces, then Yaver says it out loud in the Charon voice.", hl: ["await toLcd(answer)", "speaker.say(answer)"] },
+      { t: "The answer goes to the LCD in pieces, then Yaver says it out loud in the Charon voice, from the Uno's buzzer.", hl: ["await toLcd(answer)", "await speak(answer"] },
       { t: "<code>ST I</code> when the voice is done: the Uno smiles and goes back to the clock.", hl: ["uno.send(\"ST I\")", "finish();"] },
     ] },
   { title: "Tools: what the AI can do", file: "js", from: "const TOOLS = [", to: "function system()",
@@ -246,7 +254,7 @@ export class MiniYaver {
   render() {
     this.el.innerHTML = `
       <div class="my-head">
-        <div><h1>Mini Yaver</h1><p class="ac-lead">Your Uno as a desk AI with five parts: clap or press to talk, the Mac listens, thinks and speaks, the LCD shows Yaver's face, timers and the answer.</p></div>
+        <div><h1>Mini Yaver</h1><p class="ac-lead">Your Uno as a desk AI with five parts: clap or press to talk, the Mac listens and thinks, the buzzer speaks the answer, and the LCD shows Yaver's face, timers and the answer.</p></div>
         <div class="my-tabs" role="tablist">
           <a class="ac-btn" href="#academy/mini-yaver/3d">1 · 3D build</a>
           <button class="ac-btn ${this.tab === "wires" ? "primary" : ""}" data-my="tab:wires" role="tab">📋 Wire list</button>

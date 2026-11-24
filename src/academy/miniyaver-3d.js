@@ -13,7 +13,7 @@ const PARTS = [
   ["POT", "potentiometer", "10K pot (LCD contrast)", "10k", "Turn it until letters appear.", "POT"],
   ["RB", "resistor", "220 Ω (LCD backlight)", "220", "Keeps the backlight LED from burning.", "220Ω"],
   ["BTN", "button", "Push button (talk)", "", "Press to talk or stop. Hold 1 s for the night clock.", "BTN"],
-  ["BZ", "buzzer", "Passive buzzer (Yaver's beeps)", "passive", "Plays tunes: listening, done, timers and alarms.", "BUZZ"],
+  ["BZ", "buzzer", "Passive buzzer (Yaver's voice)", "passive", "Speaks Yaver's answers, and plays the beeps and alarm tunes.", "BUZZ"],
   ["MIC", "sound", "KY-037 sound sensor (the ears)", "", "Clap twice and Yaver listens.", "SOUND"],
 ];
 
@@ -35,8 +35,8 @@ const BUILD = [
     text: "One side to **D2**, the other side to **−**. No resistor: the Uno's own pull-up keeps D2 HIGH until you press.",
     wires: [["BTN.1", "BOARD.D2", "white", "Reads LOW when pressed."], ["BTN.2", "BB.-", "black", ""]] },
   { title: "The buzzer", parts: ["BZ"],
-    text: "The **passive** buzzer (no sticker): **+ → D5**, **− → −**. tone() makes it sing any note.",
-    wires: [["BZ.+", "BOARD.D5", "purple", "tone() plays the notes."], ["BZ.-", "BB.-", "black", ""]] },
+    text: "The **passive** buzzer (no sticker): **+ → D3**, **− → −**. It is Yaver's voice: D3 is the pin Timer2 can pulse fast enough for speech.",
+    wires: [["BZ.+", "BOARD.D3", "purple", "The voice, beeps and tunes."], ["BZ.-", "BB.-", "black", ""]] },
   { title: "The ears: sound sensor", parts: ["MIC"],
     text: "KY-037 **AO → A0**, **+ → +**, **G → −**. DO stays empty. Then plug the USB cable into the Mac and open the Mini Yaver page in Chrome.",
     wires: [["MIC.AO", "BOARD.A0", "purple", "Loudness, read all the time."], ["MIC.+", "BB.+", "red", ""], ["MIC.G", "BB.-", "black", ""]] },
@@ -46,7 +46,7 @@ const BUILD = [
 // the lines for its pins.
 const PIN_MAP = `// D0, D1 : USB to the Mac
 const uint8_t PIN_BUTTON = 2;    // push button; its other leg to GND (uses the built-in pull-up)
-const uint8_t PIN_BUZZER = 5;    // passive buzzer +; its other leg to GND
+const uint8_t PIN_BUZZER = 3;    // passive buzzer +; its other leg to GND (D3: Timer2 plays the voice on it)
 const uint8_t PIN_LCD_D7 = 7;    // the LCD sits on six pins in a row: D12 down to D7
 const uint8_t PIN_LCD_D6 = 8;
 const uint8_t PIN_LCD_D5 = 9;
@@ -83,7 +83,7 @@ export function miniPlan() {
   }));
   cached = {
     title: "Mini Yaver in 3D",
-    summary: "Your Uno as a desk AI with just **five parts**: the LCD is Yaver's face, the sound sensor its ears, the buzzer its voice for beeps and alarms, and one button to talk. The Mac does the thinking and speaking. **Every wire end is labelled with its pin** (D12, LCD RS, …). Step through the build; click any part to see what it's for, and drag to turn the view.",
+    summary: "Your Uno as a desk AI with just **five parts**: the LCD is Yaver's face, the sound sensor its ears, the buzzer its voice, and one button to talk. The Mac does the listening and thinking. **Every wire end is labelled with its pin** (D12, LCD RS, …). Step through the build; click any part to see what it's for, and drag to turn the view.",
     board: "uno",
     parts: PARTS.map(([id, type, label, value, why, tag]) => ({ id, type, label, value, why, tag, pins: KINDS[type] })),
     wires, steps, stages: [], tips: [], warnings: ["Wire the LCD first and test it: turn the pot until you see letters."],

@@ -2,6 +2,7 @@
 // (Web Serial). The Uno is the face, the button, the clap sensor and the alarm
 // clock; this page listens through the Mac's microphone, asks Gemini, speaks
 // the answer in Yaver's voice and sends a short version to the LCD.
+// The voice comes out of the Uno's buzzer (or the Mac's speakers: Settings).
 //
 // Messages to the Uno are one line each; the Uno answers every line with "K",
 // and we wait for that before sending the next (it can only hold 64 bytes).
@@ -9,7 +10,9 @@
 //   HD <text>            what was heard       AB, A <text>, AE   the answer, in pieces
 //   AL <id> <at> <kind> <label>  timer T, alarm A, daily D, reminder R
 //   AX <id>|*  delete    LS  list them        WX <text> weather    SL 1|0 sleep clock
-// From the Uno: HELLO, TALK, STOP, CLAP2, RING/DONE/SNOOZE <id>, ALM ... ALMEND, SLEEP 0|1
+//   VO  then raw sound bytes (8000 a second, 1-255) ended by a 0 byte    VX stop talking
+// From the Uno: HELLO, TALK, STOP, CLAP2, RING/DONE/SNOOZE <id>, ALM ... ALMEND, SLEEP 0|1,
+//   V (room for 64 more sound bytes), VE (the voice has finished), VN (can't talk now)
 import { geminiSettings, saveKey } from "../src/assistant/keys.js?v=28";
 import { pickChatModel } from "../src/assistant/gemini.js?v=28";
 import { Speaker } from "../src/assistant/voice.js?v=28";
@@ -20,8 +23,17 @@ const store = { get: (k, d = "") => { try { return localStorage.getItem(k) ?? d;
 
 // ---- The Uno over USB ------------------------------------------------------
 
+const VOICE_RATE = 8000;       // sound bytes a second
+const VOICE_START_ROOM = 448;  // the Uno's ring holds 512; leave a little spare
+const VOICE_ROOM = 64;         // each "V" from the Uno frees this many
+
 class Uno extends EventTarget {
-  constructor() { super(); this.port = null; this.chain = Promise.resolve(); this.ackWaiter = null; }
+  constructor() {
+    super();
+    this.port = null; this.chain = Promise.resolve(); this.ackWaiter = null;
+    this.canVoice = false;     // a v3 sketch can talk through its buzzer
+    this.room = 0; this.roomWaiter = null; this.voiceEnd = null; this.refused = false; this.cut = false;
+  }
   get connected() { return Boolean(this.writer); }
 
   async open(port) {
@@ -49,6 +61,9 @@ class Uno extends EventTarget {
           buf = buf.slice(i + 1);
           if (!line) continue;
           if (line === "K") { this.ackWaiter?.(); this.ackWaiter = null; }
+          else if (line === "V") { this.room += VOICE_ROOM; this.roomWaiter?.(true); }
+          else if (line === "VE") { this.voiceEnd?.(); }
+          else if (line === "VN") { this.refused = true; }
           else this.emit("line", line);
         }
       }
@@ -60,20 +75,61 @@ class Uno extends EventTarget {
   closed() {
     if (!this.writer) return;
     this.writer = null;
+    this.canVoice = false;
+    this.roomWaiter?.(false); this.voiceEnd?.();
     this.emit("close");
+  }
+
+  async line(text) {
+    if (!this.writer) return;
+    const ack = new Promise((resolve) => { this.ackWaiter = resolve; setTimeout(resolve, 1500); });
+    await this.writer.write(new TextEncoder().encode(text + "\n")).catch(() => {});
+    await ack;
   }
 
   // Sends one line, then waits for the Uno's "K" (at most 1.5 s).
   send(line) {
-    const job = this.chain.then(async () => {
-      if (!this.writer) return;
-      const ack = new Promise((resolve) => { this.ackWaiter = resolve; setTimeout(resolve, 1500); });
-      await this.writer.write(new TextEncoder().encode(line + "\n")).catch(() => {});
-      await ack;
-    });
+    const job = this.chain.then(() => this.line(line));
     this.chain = job;
     return job;
   }
+
+  // Plays sound bytes (1-255, 8000 a second) on the Uno's buzzer. Resolves
+  // true when the Uno has played them all, false if it couldn't talk. Sent in
+  // the same queue as the lines, so nothing else lands in the middle of the
+  // sound; never more than the Uno has room for.
+  voice(bytes) {
+    const job = this.chain.then(async () => {
+      if (!this.writer || !this.canVoice) return false;
+      this.refused = false; this.cut = false;
+      const ended = new Promise((resolve) => { this.voiceEnd = resolve; });
+      await this.line("VO");
+      if (this.refused || !this.writer) { this.voiceEnd = null; return false; }
+      this.room = VOICE_START_ROOM;
+      let i = 0;
+      while (i < bytes.length && !this.cut && this.writer) {
+        if (this.room < VOICE_ROOM) {
+          const more = await new Promise((resolve) => { this.roomWaiter = resolve; setTimeout(() => resolve(false), 1500); });
+          this.roomWaiter = null;
+          if (!more && this.room < VOICE_ROOM) break;     // the Uno stopped making room
+          continue;
+        }
+        const n = Math.min(this.room, 256, bytes.length - i);
+        this.room -= n;
+        await this.writer.write(bytes.subarray(i, i + n)).catch(() => {});
+        i += n;
+      }
+      await this.writer?.write(new Uint8Array([0])).catch(() => {});
+      if (this.cut) await this.line("VX");
+      await Promise.race([ended, new Promise((r) => setTimeout(r, 2500))]);
+      this.voiceEnd = null;
+      return true;
+    });
+    this.chain = job.then(() => {});
+    return job;
+  }
+
+  stopVoice() { this.cut = true; this.roomWaiter?.(false); }
 
   emit(type, detail) { this.dispatchEvent(new CustomEvent(type, { detail })); }
 }
@@ -92,6 +148,35 @@ async function toLcd(text) {
   await uno.send("AB");
   for (let i = 0; i < t.length; i += 40) await uno.send("A " + t.slice(i, i + 40));
   await uno.send("AE");
+}
+
+// Yaver's voice made for the buzzer: 8000 numbers a second, 1 to 255, with
+// 128 as silence (0 is kept for "the end"). A buzzer can't move much air below
+// about 400 Hz and rings loudest around 2-4 kHz, so the bass it can't play is
+// cut, the 1-3 kHz where the words are is lifted, and the quiet parts are
+// made louder so every syllable uses the whole swing.
+async function buzzerBytes(samples, rate) {
+  const len = Math.ceil((samples.length * VOICE_RATE) / rate);
+  const ctx = new OfflineAudioContext(1, len, VOICE_RATE);
+  const buf = ctx.createBuffer(1, samples.length, rate);
+  buf.copyToChannel(samples, 0);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const lowCut = ctx.createBiquadFilter(); lowCut.type = "highpass"; lowCut.frequency.value = 380; lowCut.Q.value = 0.7;
+  const words = ctx.createBiquadFilter(); words.type = "peaking"; words.frequency.value = 2000; words.Q.value = 0.8; words.gain.value = 6;
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -30; comp.knee.value = 6; comp.ratio.value = 8; comp.attack.value = 0.003; comp.release.value = 0.12;
+  src.connect(lowCut).connect(words).connect(comp).connect(ctx.destination);
+  src.start();
+  const out = (await ctx.startRendering()).getChannelData(0);
+  let peak = 1e-4;
+  for (const v of out) peak = Math.max(peak, Math.abs(v));
+  const gain = 1.4 / peak;                 // a little past full, softly rounded off below
+  const ramp = Math.round(VOICE_RATE * 0.03);         // 30 ms fade from rest to the middle, and back: no click
+  const bytes = new Uint8Array(out.length + ramp * 2);
+  for (let i = 0; i < ramp; i++) { bytes[i] = 1 + Math.round((127 * i) / ramp); bytes[bytes.length - 1 - i] = bytes[i]; }
+  for (let i = 0; i < out.length; i++) bytes[ramp + i] = Math.max(1, Math.min(255, Math.round(128 + 127 * Math.tanh(out[i] * gain))));
+  return bytes;
 }
 
 // ---- What the page shows ---------------------------------------------------
@@ -259,8 +344,26 @@ async function think(question) {
 // ---- Listening and speaking -------------------------------------------------
 
 const speaker = new Speaker();
-speaker.addEventListener("ready", () => { $("s-voice").textContent = `Voice: ${speaker.voiceName}`; dot("d-voice", "ok"); });
+function voiceStatus() {
+  const where = $("voiceout").value === "mac" ? "the Mac's speakers" : !uno.connected ? "the Uno's buzzer (once connected)" : uno.canVoice ? "the Uno's buzzer" : "the Mac (this Uno has the old sketch)";
+  $("s-voice").textContent = `Voice: ${speaker.voiceName}, from ${where}`;
+}
+speaker.addEventListener("ready", () => { voiceStatus(); dot("d-voice", "ok"); });
 let listening = false, busy = false, rec = null;
+
+// Says the answer from the Uno's buzzer: the natural voice is made here, cut
+// down to what a buzzer can play, and streamed to the Uno. Falls back to the
+// Mac's speakers when the buzzer can't (Mac chosen in Settings, an old
+// sketch, the Uno busy ringing, or no natural voice yet).
+async function speak(text, still = () => true) {
+  if ($("voiceout").value !== "mac" && uno.connected && uno.canVoice && speaker.natural) {
+    const a = await speaker.neural.synth(text.replace(/[*_#`>]+/g, "").trim()).catch(() => null);
+    if (!still()) return;
+    if (a?.samples?.length && (await uno.voice(await buzzerBytes(a.samples, a.rate)))) return;
+    if (!still()) return;
+  }
+  await speaker.say(text);
+}
 
 function listen() {
   return new Promise((resolve) => {
@@ -308,12 +411,12 @@ async function conversation() {
   await toLcd(answer);
   await uno.send("ST S");
   $("talk").textContent = "🔊 Speaking… (click to stop)";
-  await speaker.say(answer);
+  await speak(answer, () => busy);
   await uno.send("ST I");
   finish();
 }
 function finish() { busy = false; $("talk").classList.remove("on"); $("talk").innerHTML = "🎙 Talk to Yaver <small>(Space, the Uno's button, or clap twice)</small>"; }
-function stopAll() { rec?.abort(); speaker.stop(); uno.send("ST I"); finish(); }
+function stopAll() { rec?.abort(); speaker.stop(); uno.stopVoice(); uno.send("ST I"); finish(); }
 
 $("talk").addEventListener("click", () => conversation());
 document.addEventListener("keydown", (e) => { if (e.code === "Space" && !e.target.closest("input, select, textarea")) { e.preventDefault(); conversation(); } });
@@ -323,7 +426,12 @@ document.addEventListener("click", () => { speaker.unlock(); $("banner").style.d
 
 uno.addEventListener("line", ({ detail: line }) => {
   const [cmd, ...rest] = line.split(" ");
-  if (cmd === "HELLO") { log("The Uno said hello."); syncUno(); }
+  if (cmd === "HELLO") {
+    uno.canVoice = rest.includes("VOICE");
+    log(uno.canVoice ? "The Uno said hello. Yaver speaks from its buzzer." : "The Uno said hello. It has the old sketch, so Yaver speaks from the Mac: upload the new MiniYaver.ino to hear him from the buzzer.");
+    voiceStatus();
+    syncUno();
+  }
   else if (cmd === "TALK") { if (!busy) conversation(); }
   else if (cmd === "STOP") { if (busy) stopAll(); }
   else if (cmd === "RING") {
@@ -353,12 +461,14 @@ uno.addEventListener("open", () => {
   $("s-uno").textContent = "Uno connected.";
   dot("d-uno", "ok");
   $("connect").style.display = "none";
+  voiceStatus();
   setTimeout(() => uno.send("HI"), 2200);   // opening the port restarts the Uno; it says HELLO when ready
 });
 uno.addEventListener("close", () => {
   $("s-uno").textContent = "Uno unplugged.";
   dot("d-uno", "");
   $("connect").style.display = "";
+  voiceStatus();
 });
 setInterval(() => { if (uno.connected) uno.send(`TM ${localNow()}`); }, 8000);       // also "I'm still here"
 setInterval(() => { if (uno.connected) weather().catch(() => {}); }, 30 * 60000);
@@ -373,6 +483,8 @@ $("connect").addEventListener("click", async () => {
 // ---- Start ------------------------------------------------------------------
 
 $("lang").value = store.get("miniyaver-lang", "en-US");
+$("voiceout").value = store.get("miniyaver-voiceout", "uno");
+$("voiceout").addEventListener("change", () => { store.set("miniyaver-voiceout", $("voiceout").value); voiceStatus(); });
 $("city").value = store.get("miniyaver-city");
 $("lang").addEventListener("change", () => store.set("miniyaver-lang", $("lang").value));
 $("city").addEventListener("change", () => { store.set("miniyaver-city", $("city").value.trim()); weather().catch((e) => log(e.message)); });
