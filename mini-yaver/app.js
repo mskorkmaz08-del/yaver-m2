@@ -389,12 +389,14 @@ function thinkingOff(model) {
   return {};
 }
 
-// Gemini is sometimes busy (503) or briefly failing: wait a moment and try
-// again, then try a lighter model, before giving up. The free limit (429) is
-// per model, so that also moves on to the next one.
+// Yaver uses a light, fast Gemini first (it's busy less often, and plenty for
+// short spoken answers). If one is busy (503) or briefly failing, it waits a
+// moment and tries again, then moves on to the next model. The free limit
+// (429) is per model, so that also moves on.
+const MODELS = ["gemini-2.5-flash-lite", "gemini-2.5-flash"];
 const BUSY = new Set([0, 500, 502, 503, 504]);
 async function gemini(contents) {
-  const models = [...new Set([brain.model, "gemini-2.5-flash", "gemini-2.5-flash-lite"])];
+  const models = [...new Set([...MODELS, brain.model])];
   let last = 0;
   for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -677,7 +679,7 @@ async function startBrain() {
   }
   brain = { key: s.geminiKey, model: await pickChatModel(s.geminiKey, s.geminiModel).catch(() => "gemini-2.5-flash") };
   speaker.useGemini(s.geminiKey, s.ttsVoice || "Charon");
-  $("s-brain").textContent = `Brain: Google ${brain.model}`;
+  $("s-brain").textContent = `Brain: Google ${MODELS[0]} (switches to another Gemini by itself if busy)`;
   dot("d-brain", "ok");
   $("keyform").style.display = "none";
 }
