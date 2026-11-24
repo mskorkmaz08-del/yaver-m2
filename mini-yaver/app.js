@@ -389,20 +389,39 @@ function thinkingOff(model) {
   return {};
 }
 
-async function gemini(contents, fast = true) {
-  const res = await fetch(`${API}/models/${brain.model}:generateContent`, {
+// Gemini is sometimes busy (503) or briefly failing: wait a moment and try
+// again, then try a lighter model, before giving up. The free limit (429) is
+// per model, so that also moves on to the next one.
+const BUSY = new Set([0, 500, 502, 503, 504]);
+async function gemini(contents) {
+  const models = [...new Set([brain.model, "gemini-2.5-flash", "gemini-2.5-flash-lite"])];
+  let last = 0;
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await ask(model, contents);
+      if (res.ok) return (await res.json()).candidates?.[0]?.content ?? { role: "model", parts: [] };
+      last = res.status;
+      if (res.status === 429) break;                         // this model's free limit: next model
+      if (!BUSY.has(res.status)) throw new Error(`Gemini said ${res.status}.`);
+      await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+    }
+  }
+  throw new Error(last === 429 ? "The free AI limit is used up for now. Try again in a minute." : "Gemini is too busy right now. Try again in a minute.");
+}
+
+async function ask(model, contents, fast = true) {
+  const res = await fetch(`${API}/models/${model}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": brain.key, "Content-Type": "application/json" },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system() }] },
       contents,
       tools: [{ functionDeclarations: TOOLS.map(({ name, description, parameters }) => ({ name, description, parameters })) }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 500, ...(fast ? thinkingOff(brain.model) : {}) },
+      generationConfig: { temperature: 0.7, maxOutputTokens: 500, ...(fast ? thinkingOff(model) : {}) },
     }),
-  });
-  if (res.status === 400 && fast) return gemini(contents, false);
-  if (!res.ok) throw new Error(res.status === 429 ? "The free AI limit is used up for now. Try again in a minute." : `Gemini said ${res.status}.`);
-  return (await res.json()).candidates?.[0]?.content ?? { role: "model", parts: [] };
+  }).catch(() => ({ ok: false, status: 0 }));
+  if (res.status === 400 && fast) return ask(model, contents, false);
+  return res;
 }
 
 // `question` is text, or the parts of an audio message. Returns the answer;
@@ -456,17 +475,17 @@ speaker.addEventListener("ready", () => { voiceStatus(); dot("d-voice", "ok"); }
 let listening = false, busy = false, rec = null;
 
 // Says the answer from the Uno's buzzer: the natural voice is made here, cut
-// down to what a buzzer can play, and streamed to the Uno. Falls back to the
-// Mac's speakers when the buzzer can't (Mac chosen in Settings, an old
-// sketch, the Uno busy ringing, or no natural voice yet).
+// down to what a buzzer can play, and streamed to the Uno. When the buzzer is
+// chosen the Mac never speaks: if the voice can't be made, the answer is only
+// on the LCD. The Mac's speakers are used only when chosen in Settings or
+// when the Uno has a sketch without a voice.
+const buzzerVoice = () => $("voiceout").value !== "mac" && uno.connected && uno.canVoice;
 async function speak(text, still = () => true) {
-  if ($("voiceout").value !== "mac" && uno.connected && uno.canVoice && speaker.natural) {
-    const a = await speaker.neural.synth(text.replace(/[*_#`>]+/g, "").trim()).catch(() => null);
-    if (!still()) return;
-    if (a?.samples?.length && (await uno.voice(await buzzerBytes(a.samples, a.rate)))) return;
-    if (!still()) return;
-  }
-  await speaker.say(text);
+  if (!buzzerVoice()) { await speaker.say(text); return; }
+  const a = speaker.natural ? await speaker.neural.synth(text.replace(/[*_#`>]+/g, "").trim()).catch(() => null) : null;
+  if (!still()) return;
+  if (!a?.samples?.length) { log(speaker.loading ? "Yaver's voice is still loading, so this answer is only on the LCD." : "Google's voice service didn't answer, so this answer is only on the LCD."); return; }
+  if (!(await uno.voice(await buzzerBytes(a.samples, a.rate)))) log("The Uno was busy (an alarm?), so it didn't say this one.");
 }
 
 function listen() {
@@ -594,7 +613,7 @@ uno.addEventListener("line", ({ detail: line }) => {
     const what = label.join(" ");
     const say = kind === "T" ? `Sir, your ${what} timer is done.` : kind === "R" ? `A reminder, sir: ${what}.` : `Good morning, sir. It's ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`;
     log(`🔔 ${say}`, "yaver");
-    setTimeout(() => speaker.say(say), 1500);
+    if (!buzzerVoice()) setTimeout(() => speaker.say(say), 1500);     // with the buzzer, the Uno's own tune is the alarm
   } else if (cmd === "DONE" || cmd === "SNOOZE") { uno.send("LS"); }
   else if (cmd === "ALM") {
     const [id, at, kind, ...label] = rest;
