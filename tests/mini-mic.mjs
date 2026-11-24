@@ -15,7 +15,8 @@
 //     the page shows what was heard, and the next question's history has words, not audio;
 //  5. a clipped recording turns the microphone boost down (MG);
 //  6. "ME 0" (no talking heard) ends quietly, without asking Gemini;
-//  7. a busy Gemini (503) is tried again instead of failing, and the Mac never speaks.
+//  7. a busy Gemini (503) is tried again instead of failing, and the Mac never speaks;
+//  8. the newest flash-lite model is used first, and one that's gone (404) is skipped.
 import { createRequire } from "module";
 import { execSync } from "child_process";
 
@@ -97,13 +98,16 @@ await page.addInitScript(() => {
 
 // Pretend Gemini: busy (503) the first time it's asked.
 const asked = [];
+const tried = [];
 let chatCalls = 0;
 const pcm = Buffer.alloc(24000 * 2);
 for (let i = 0; i < 24000; i++) pcm.writeInt16LE(Math.round(9000 * Math.sin((2 * Math.PI * 400 * i) / 24000)), i * 2);
 await page.route("https://generativelanguage.googleapis.com/**", async (r) => {
   const url = r.request().url();
-  if (url.includes("/models?")) return r.fulfill({ json: { models: [{ name: "models/gemini-2.5-flash", supportedGenerationMethods: ["generateContent"] }] } });
+  if (url.includes("/models?")) return r.fulfill({ json: { models: ["gemini-2.5-flash", "gemini-9.9-flash-lite", "gemini-2.5-flash-image", "gemini-9.8-flash-lite"].map((n) => ({ name: `models/${n}`, supportedGenerationMethods: ["generateContent"] })) } });
   if (/tts/.test(url)) return r.fulfill({ json: { candidates: [{ content: { parts: [{ inlineData: { mimeType: "audio/L16;codec=pcm;rate=24000", data: pcm.toString("base64") } }] } }] } });
+  tried.push(url.match(/models\/([^:]+)/)[1]);
+  if (url.includes("gemini-9.9-flash-lite")) return r.fulfill({ status: 404, body: "" });   // retired
   if (chatCalls++ === 0) return r.fulfill({ status: 503, body: "" });
   asked.push(JSON.parse(r.request().postData() || "{}"));
   return r.fulfill({ json: { candidates: [{ content: { role: "model", parts: [{ text: "[heard: what time is it] It is a quarter past midnight, sir." }] } }] } });
@@ -167,6 +171,10 @@ if (await page.evaluate(() => document.querySelector("#talk").classList.contains
 // 7
 if (chatCalls < 2 || /503|too busy/.test(await page.textContent("#log"))) fails.push("a busy Gemini wasn't tried again");
 if (await page.evaluate(() => window.__macSpoke)) fails.push("the Mac spoke");
+// 8
+if (tried[0] !== "gemini-9.9-flash-lite" || !tried.includes("gemini-9.8-flash-lite")) fails.push(`models tried in the wrong order: ${tried.slice(0, 4).join(", ")}`);
+if (tried.includes("gemini-2.5-flash-image")) fails.push("an image model was tried");
+if (!/gemini-9\.8-flash-lite/.test(await page.textContent("#s-brain"))) fails.push(`status doesn't show the model that answered: ${await page.textContent("#s-brain")}`);
 
 await browser.close();
 if (errors.length) fails.push(...errors.map((e) => `page error: ${e}`));
