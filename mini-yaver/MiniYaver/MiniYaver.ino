@@ -19,14 +19,17 @@
       even if the page is closed (as long as the Uno has USB power)
     - double clap or a button press = "Yaver, I'm talking to you"
     - listens: records the KY-037 8000 times a second and sends it to the
-      page, stopping by itself when you stop talking (see "listening")
+      page (see "listening"): while you hold the button, or for 8 seconds
+      after a short press or a double clap
     - speaks: the page streams the voice as 8000 numbers a second, and the
       buzzer plays them (see "voice" below). The buzzer is on D3 for this:
       D3 is the pin the Uno's Timer2 can drive fast enough to make speech.
     - mood light: the RGB LED breathes when idle, follows your voice while
       listening, swirls while thinking and pulses with its own voice
 
-  Button: short press = talk / "I'm done talking" / stop.  Hold 1 s = sleep clock on or off.
+  Button: hold it and talk; let go when you're done.
+          Or press once: it listens for 8 s (press again to send it sooner).
+          While Yaver speaks: press = stop. Say "good night" for the night clock.
           While ringing: short press = stop, hold = snooze 5 minutes.
 
   Libraries: only LiquidCrystal and EEPROM, both already in the Arduino IDE.
@@ -58,10 +61,9 @@ const uint16_t CLAP_LEVEL   = 120;   // sound jump that counts as a clap. Lower 
 const bool     RGB_COMMON_ANODE = false;  // true if your RGB module's shared leg is marked + (it goes to 5V)
 const uint8_t  MIC_GAIN     = 8;     // how much the recording is boosted at first (the page tunes it after each use)
 const uint8_t  MIC_SPEECH   = 3;     // how much louder than the room counts as talking (lower = more sensitive)
-const uint16_t MIC_END_MS   = 900;   // this much quiet after you talk ends the recording
-const uint16_t MIC_WAIT_MS  = 5000;  // give up if you don't start talking within this
-const uint16_t MIC_MAX_MS   = 10000; // the longest recording
-const uint16_t HOLD_MS      = 800;   // a button press this long is a "hold"
+const uint16_t MIC_LISTEN_MS = 8000; // a short press (or a double clap) listens this long
+const uint16_t MIC_MAX_MS   = 20000; // holding the button listens at most this long
+const uint16_t HOLD_MS      = 600;   // a button press this long is a "hold"
 const uint32_t RING_MAX_MS  = 60000; // an alarm rings at most one minute
 #define ANSWER_MAX 320               // the short answer the LCD shows (the voice says it all)
 #define MAX_ALARMS 6
@@ -161,6 +163,7 @@ const uint16_t TUNE_REMIND[] PROGMEM = {988,120, 1319,220, 0,700, 0,0};
 const uint16_t TUNE_OK[]     PROGMEM = {1175,60, 0,0};
 
 bool voiceActive();                 // true while Yaver's voice plays (see "voice")
+bool btnDown = false;               // the button is pressed right now
 extern volatile bool recOn;         // true while Yaver records you (see "listening")
 
 const uint16_t* tune = nullptr;
@@ -518,6 +521,7 @@ bool recPending = false;            // start recording when the "listening" beep
 uint32_t recAt = 0, recBlockAt = 0;
 uint8_t recNoise = 255, recLoud = 0, recQuiet = 0, micLevel = 0;
 bool recHeard = false;
+bool recHold = false;               // true: listening while the button is held, until it's let go
 
 void recStart() {
   recPending = false;
@@ -552,14 +556,17 @@ void recFinish() {
   recOn = false;                    // the timer stops adding
   while (vHead != vTail) { Serial.write(vbuf[vTail]); if (++vTail == VRING) vTail = 0; }
   Serial.write((uint8_t)0);
-  Serial.print(F("ME ")); Serial.println(recHeard ? 1 : 0);   // did it hear any talking?
+  bool send = millis() - recAt > 500;           // anything shorter is a slip of the finger
+  Serial.print(F("ME ")); Serial.println(send ? 1 : 0);
   micLevel = 0;
-  if (recHeard) { setMode(M_THINK); play(TUNE_THINK); }
+  recHold = false;
+  if (send) { setMode(M_THINK); play(TUNE_THINK); }
   else setMode(M_IDLE);
 }
 
-// Every 32 ms: how loud was it? The first 0.2 s learns how loud the room is;
-// talking is anything clearly louder. After you talk, MIC_END_MS of quiet ends it.
+// Every 32 ms: how loud was it? The first 0.2 s learns how loud the room is,
+// and talking is anything clearly louder (that's only for the LCD's bar).
+// It listens while the button is held, or for MIC_LISTEN_MS after a press.
 void serviceRec(uint32_t now) {
   if (recPending && !tune) recStart();
   if (!recOn) return;
@@ -577,7 +584,7 @@ void serviceRec(uint32_t now) {
   if (recNoise > 30) recNoise = 30;
   if (lvl > recNoise + recNoise / 2 + MIC_SPEECH) { if (++recLoud >= 2) recHeard = true; recQuiet = 0; }
   else { recLoud = 0; if (recHeard && recQuiet < 255) recQuiet++; }
-  if ((recHeard && recQuiet * 32 >= MIC_END_MS) || (!recHeard && t > MIC_WAIT_MS) || t > MIC_MAX_MS) recFinish();
+  if (recHold ? t > MIC_MAX_MS : t > MIC_LISTEN_MS) recFinish();
 }
 
 // ---------------------------------------------------------------- mood light
@@ -643,10 +650,11 @@ void talk() {
   setMode(M_LISTEN);
   play(TUNE_LISTEN);
   if (!linked) { strcpy_P(heard, PSTR("Open the page")); return; }
+  recHold = false;
   recPending = true;                // record as soon as the beep ends (so it isn't recorded)
 }
 void stopTalk() {
-  if (recOn) { if (millis() - recAt > 500) recHeard = true; recFinish(); return; }   // "I'm done talking": send it, even if it sounded quiet
+  if (recOn) { recFinish(); return; }   // "I'm done talking": send it now
   recPending = false;
   Serial.println(F("STOP"));
   voiceCut();
@@ -654,26 +662,31 @@ void stopTalk() {
   setMode(M_IDLE);
 }
 
-// Button with debounce: short press on release, hold fires once at HOLD_MS.
-bool btnDown = false, holdFired = false;
+// Button with debounce. Pressing it when Yaver is idle starts listening at
+// once. Held past HOLD_MS, it's push-to-talk: letting go sends it. Let go
+// sooner, it was a press: Yaver keeps listening for MIC_LISTEN_MS.
 uint32_t btnSince = 0, btnChange = 0;
+bool holdFired = false, pressTalks = false;
 void pollButton(uint32_t now) {
   bool down = digitalRead(PIN_BUTTON) == LOW;
   if (down != btnDown && now - btnChange > 25) {
     btnChange = now;
     btnDown = down;
-    if (down) { btnSince = now; holdFired = false; }
-    else if (!holdFired) {                    // a short press
+    if (down) {
+      btnSince = now; holdFired = false;
+      pressTalks = mode == M_IDLE || mode == M_SLEEP;
+      if (pressTalks) talk();                 // start listening right away
+    } else if (pressTalks) {
+      if (recHold && recOn) recFinish();      // push-to-talk: let go = done talking
+    } else if (!holdFired || mode == M_LISTEN) {   // a press while Yaver is busy
       if (mode == M_RING) endRing(false);
-      else if (mode == M_SLEEP) setMode(M_IDLE);
-      else if (mode == M_IDLE) talk();
-      else stopTalk();
+      else stopTalk();                        // while listening: send it now; while speaking: stop
     }
   }
-  if (btnDown && !holdFired && !recOn && now - btnSince >= HOLD_MS) {
+  if (btnDown && !holdFired && now - btnSince >= HOLD_MS) {
     holdFired = true;
     if (mode == M_RING) endRing(true);
-    else { setMode(mode == M_SLEEP ? M_IDLE : M_SLEEP); play(TUNE_OK); Serial.println(mode == M_SLEEP ? F("SLEEP 1") : F("SLEEP 0")); }
+    else if (pressTalks && (recOn || recPending)) recHold = true;   // held: listen until it's let go
   }
 }
 
@@ -825,7 +838,12 @@ void draw(uint32_t now) {
       fbTextP(0, 5, PSTR("Listening"));
       if (recOn || recPending) {                   // a bar for how loud you are
         if (!recHeard) fbTextP(1, 5, PSTR("speak now"));
-        else { uint8_t bars = micLevel > 43 ? 11 : micLevel / 4; for (uint8_t i = 0; i < bars; i++) fb[1][5 + i] = (char)255; }
+        else { uint8_t bars = micLevel > 35 ? 9 : micLevel / 4; for (uint8_t i = 0; i < bars; i++) fb[1][5 + i] = (char)255; }
+        if (recOn && !recHold) {                   // a press: seconds left
+          uint32_t t = millis() - recAt;
+          uint8_t left = t < MIC_LISTEN_MS ? (MIC_LISTEN_MS - t + 999) / 1000 : 0;
+          fb[1][14] = ' '; fb[1][15] = '0' + (left > 9 ? 9 : left);
+        }
       } else {
         uint8_t n = strlen(heard);
         fbText(1, 5, heard + (n > 11 ? n - 11 : 0));    // the newest words

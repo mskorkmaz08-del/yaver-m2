@@ -62,7 +62,7 @@ const PARTS = [
   { id: "btn", name: "Talk button", box: [740, 120, 140, 70], color: "#f78fb3",
     pins: { "1": [760, 190] },
     power: ["other side → GND"],
-    note: "Short press: talk, or stop. Hold 1 s: the big night clock. While an alarm rings: press = stop, hold = snooze 5 minutes." },
+    note: "Hold it and talk, let go when you're done. Or press once: Yaver listens for 8 seconds (press again to send sooner). While it speaks: press = stop. While an alarm rings: press = stop, hold = snooze 5 minutes." },
   { id: "sound", name: "KY-037 (Yaver's ear)", box: [470, 480, 150, 70], color: "#06d6a0",
     pins: { AO: [540, 480] },
     power: ["+ → 5V", "G → GND", "DO empty"],
@@ -183,8 +183,8 @@ const SECTIONS = [
     notes: [
       { t: "After the beep, the Uno sends <code>MIC</code>, then every byte is sound, until a <code>0</code>. Lines from the page wait meanwhile.", hl: ["F(\"MIC\")", "Serial.write((uint8_t)0)"] },
       { t: "It only sends as much as the USB has room for, so <code>loop()</code> never blocks.", hl: ["Serial.availableForWrite()"] },
-      { t: "The first 0.2 s learns how loud the room is. Talking is clearly louder than that.", hl: ["t < 200", "recNoise + recNoise / 2 + MIC_SPEECH"] },
-      { t: "Almost a second of quiet after you talk ends it; so does 5 s without talking, or 10 s in all. Then <code>ME 1</code> (heard you) or <code>ME 0</code> (nothing).", hl: ["recQuiet * 32 >= MIC_END_MS", "t > MIC_MAX_MS", "F(\"ME \")"] },
+      { t: "The first 0.2 s learns how loud the room is; anything clearly louder is talking, and the LCD shows a bar for it.", hl: ["t < 200", "recNoise + recNoise / 2 + MIC_SPEECH"] },
+      { t: "You decide when it stops: held, it listens until you let go (20 s at most); pressed once, for 8 s, or until you press again. Then <code>ME 1</code>, or <code>ME 0</code> for a slip of the finger under half a second.", hl: ["recHold ? t > MIC_MAX_MS : t > MIC_LISTEN_MS", "F(\"ME \")"] },
     ] },
   { title: "The mood light", file: "ino", from: "// ---------------------------------------------------------------- mood light", to: "// ---------------------------------------------------------------- input",
     notes: [
