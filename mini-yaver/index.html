@@ -36,6 +36,7 @@
     input, select { font: inherit; color: var(--text); background: #0a101a; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
     small, .muted { color: var(--muted); }
     h2 { font-size: 15px; margin: 0 0 8px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+    button.mini { padding: 2px 8px; font-size: 12px; margin-left: 6px; }
     #banner { display: none; background: var(--warn); color: #231a00; padding: 10px 14px; border-radius: 10px; margin-top: 14px; cursor: pointer; }
   </style>
 </head>
@@ -53,6 +54,7 @@
     <div class="status">
       <i class="dot" id="d-uno"></i><div class="row"><span id="s-uno">Uno not connected.</span><button class="primary" id="connect">Connect Uno</button></div>
       <i class="dot" id="d-brain"></i><span id="s-brain">Checking the AI key…</span>
+      <i class="dot" id="d-mic"></i><span id="s-mic">Ears: …</span>
       <i class="dot" id="d-voice"></i><span id="s-voice">Voice: loading…</span>
     </div>
     <form id="keyform" class="row" style="display:none;margin-top:10px">
@@ -87,9 +89,12 @@
         <option value="en-US">English</option><option value="en-GB">English (UK)</option><option value="tr-TR">Türkçe</option><option value="ru-RU">Русский</option><option value="kk-KZ">Қазақша</option>
       </select></label>
       <label>My city <input id="city" placeholder="automatic" size="14" /></label>
+      <label>Yaver speaks from <select id="voiceout">
+        <option value="uno">the Uno's buzzer</option><option value="mac">the Mac's speakers</option>
+      </select></label>
     </div>
   </div>
 </main>
-<script type="module" src="app.js?v=28"></script>
+<script type="module" src="app.js?v=30"></script>
 </body>
 </html>
