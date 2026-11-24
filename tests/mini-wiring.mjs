@@ -32,6 +32,7 @@ const expected = {
   // Uno pins, from the sketch's pin map.
   "LCD.RS": P.PIN_LCD_RS, "LCD.E": P.PIN_LCD_E, "LCD.D4": P.PIN_LCD_D4, "LCD.D5": P.PIN_LCD_D5, "LCD.D6": P.PIN_LCD_D6, "LCD.D7": P.PIN_LCD_D7,
   "BTN.1": P.PIN_BUTTON, "BZ.+": P.PIN_BUZZER, "MIC.AO": P.PIN_SOUND,
+  "R1.1": P.PIN_LED_R, "R2.1": P.PIN_LED_G, "R3.1": P.PIN_LED_B,
 };
 if (!/INPUT_PULLUP/.test(ino)) throw new Error("the button no longer uses INPUT_PULLUP: it would need a resistor in this test");
 for (const [k, v] of Object.entries(expected)) if (v === undefined) throw new Error(`no value for ${k} in the sketch`);
@@ -83,9 +84,10 @@ const report = await page.evaluate((expected) => {
     if (!mine.some((q) => L.f(q) === five)) fails.push(`${part} has no 5V`);
     if (!mine.some((q) => L.f(q) === gnd)) fails.push(`${part} has no GND`);
   }
-  for (const [a, b] of [["LCD.VSS", gnd], ["LCD.VDD", five], ["LCD.RW", gnd], ["LCD.K", gnd], ["RB.2", five], ["BTN.2", gnd], ["BZ.-", gnd], ["MIC.G", gnd], ["MIC.+", five]]) if (L.f(a) !== b) fails.push(`${a} is on the wrong net`);
+  for (const [a, b] of [["LCD.VSS", gnd], ["LCD.VDD", five], ["LCD.RW", gnd], ["LCD.K", gnd], ["RB.2", five], ["BTN.2", gnd], ["BZ.-", gnd], ["MIC.G", gnd], ["MIC.+", five], ["RGB.-", gnd]]) if (L.f(a) !== b) fails.push(`${a} is on the wrong net`);
   if (L.f("LCD.A") !== L.f("RB.1")) fails.push("the backlight doesn't go through the 220 Ω");
   if (L.f("LCD.V0") !== L.f("POT.W")) fails.push("V0 isn't on the pot's middle leg");
+  for (const [r, c] of [["R1.2", "RGB.R"], ["R2.2", "RGB.G"], ["R3.2", "RGB.B"]]) if (L.f(r) !== L.f(c)) fails.push(`${c} doesn't go through its 220 Ω`);
 
   // ---- 3: the breadboard as built
   const B = uf();
