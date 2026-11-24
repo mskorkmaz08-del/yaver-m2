@@ -12,7 +12,7 @@ const PARTS = [
   ["LCD", "lcd", "1602 LCD (Yaver's face)", "", "Shows the face, the clock, timers and the short answer.", "LCD"],
   ["POT", "potentiometer", "10K pot (LCD contrast)", "10k", "Turn it until letters appear.", "POT"],
   ["RB", "resistor", "220 Ω (LCD backlight)", "220", "Keeps the backlight LED from burning.", "220Ω"],
-  ["BTN", "button", "Push button (talk)", "", "Press to talk or stop. Hold 1 s for the night clock.", "BTN"],
+  ["BTN", "button", "Push button (talk)", "", "Hold it and talk, or press once to talk for 8 s.", "BTN"],
   ["BZ", "buzzer", "Passive buzzer (Yaver's voice)", "passive", "Speaks Yaver's answers, and plays the beeps and alarm tunes.", "BUZZ"],
   ["MIC", "sound", "KY-037 sound sensor (Yaver's ear)", "", "Yaver's own microphone: it records you, and hears the double clap.", "SOUND"],
   ["RGB", "rgb", "RGB LED module (mood light)", "", "Fades through Yaver's moods: idle, listening, thinking, speaking.", "RGB"],

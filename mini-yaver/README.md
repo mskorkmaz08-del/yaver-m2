@@ -9,7 +9,8 @@ Six parts from your kit, and **the Uno is Yaver**: it hears you with its own mic
 
 | You | Yaver |
 |---|---|
-| Clap twice, press the button, or press Space on the page | Beeps, turns green and records you, and stops by itself when you stop talking |
+| Hold the button and talk, then let go | Beeps, turns green and records you for as long as you hold it (20 s at most) |
+| Press the button once, clap twice, or press Space on the page | Records you for 8 seconds (press again to send sooner), with the seconds left on the LCD |
 | "What's the weather?" | Says today's weather for your city, and keeps it on the LCD |
 | "Set a timer for 5 minutes for tea" | Counts down on the LCD, then plays the timer tune |
 | "Wake me up at 7:30 every day" | Rings every morning, even with the page closed |
@@ -17,7 +18,7 @@ Six parts from your kit, and **the Uno is Yaver**: it hears you with its own mic
 | "Good night" | Turns on the big night clock |
 | Any question | Answers out loud from the buzzer in the Charon voice, and scrolls the answer on the LCD |
 
-The button: **press** to talk; press again while it listens for "I'm done talking"; press while it speaks to stop it. **Hold 1 second** for the night clock. When an alarm rings: **press** to stop it, **hold** to snooze 5 minutes.
+The button: **hold** it and talk, **let go** when you're done. Or **press** it once and talk for up to 8 seconds; press again to send it sooner. Press while Yaver speaks to stop it. Say "good night" for the night clock. When an alarm rings: **press** to stop it, **hold** to snooze 5 minutes.
 
 **The mood light** fades smoothly between moods: breathing cyan when idle, green that gets brighter as you talk, swirling purple while it thinks, a pulse in time with its own voice while it speaks, a short rainbow when it's done, red-orange when an alarm rings, a red flash on an error, and a faint blue night light with the night clock.
 
@@ -75,7 +76,7 @@ LCD pins 7 to 10 (D0 to D3) and the sound sensor's DO stay empty. If your RGB mo
 
 ## How it hears you
 
-After the beep, the Uno records the KY-037 8000 times a second: a timer starts each measurement and collects it on the next tick, takes away the signal's slow middle, boosts what's left and sends it to the page over USB (`MIC`, the sound bytes, a `0`). It learns how loud the room is in the first 0.2 s and stops by itself after almost a second of quiet once you've talked (or 5 s if you never start, 10 s at most). The page wraps the recording as a .wav and gives it to Gemini **as it is**: Gemini works out the words and answers. Gemini starts its answer with `[heard: …]`, which the page shows (with a **▶ hear it** button to listen to the recording) and keeps out of the spoken answer.
+After the beep, the Uno records the KY-037 8000 times a second: a timer starts each measurement and collects it on the next tick, takes away the signal's slow middle, boosts what's left and sends it to the page over USB (`MIC`, the sound bytes, a `0`). You decide how long it listens: while you hold the button, or 8 seconds after a press or a double clap. The page wraps the recording as a .wav and gives it to Gemini **as it is**: Gemini works out the words and answers. Gemini starts its answer with `[heard: …]`, which the page shows (with a **▶ hear it** button to listen to the recording) and keeps out of the spoken answer.
 
 The boost starts at ×8 and the page tunes it after every recording: down if your voice hit the top, up if it barely moved.
 
