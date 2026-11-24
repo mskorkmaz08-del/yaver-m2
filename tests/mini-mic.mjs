@@ -14,7 +14,8 @@
 //  4. "[heard: ...]" is taken out of the answer: the LCD and voice get only the answer,
 //     the page shows what was heard, and the next question's history has words, not audio;
 //  5. a clipped recording turns the microphone boost down (MG);
-//  6. "ME 0" (no talking heard) ends quietly, without asking Gemini.
+//  6. "ME 0" (no talking heard) ends quietly, without asking Gemini;
+//  7. a busy Gemini (503) is tried again instead of failing, and the Mac never speaks.
 import { createRequire } from "module";
 import { execSync } from "child_process";
 
@@ -89,16 +90,21 @@ await page.addInitScript(() => {
   Object.defineProperty(navigator, "serial", { value: { requestPort: async () => port, getPorts: async () => [] } });
   window.webkitSpeechRecognition = class { start() { window.__uno.macMic++; setTimeout(() => this.onend?.(), 50); } abort() { this.onend?.(); } };
   window.SpeechRecognition = window.webkitSpeechRecognition;
+  window.__macSpoke = 0;
+  const realSpeak = speechSynthesis.speak.bind(speechSynthesis);
+  speechSynthesis.speak = (u) => { window.__macSpoke++; realSpeak(u); };
 });
 
-// Pretend Gemini.
+// Pretend Gemini: busy (503) the first time it's asked.
 const asked = [];
+let chatCalls = 0;
 const pcm = Buffer.alloc(24000 * 2);
 for (let i = 0; i < 24000; i++) pcm.writeInt16LE(Math.round(9000 * Math.sin((2 * Math.PI * 400 * i) / 24000)), i * 2);
 await page.route("https://generativelanguage.googleapis.com/**", async (r) => {
   const url = r.request().url();
   if (url.includes("/models?")) return r.fulfill({ json: { models: [{ name: "models/gemini-2.5-flash", supportedGenerationMethods: ["generateContent"] }] } });
   if (/tts/.test(url)) return r.fulfill({ json: { candidates: [{ content: { parts: [{ inlineData: { mimeType: "audio/L16;codec=pcm;rate=24000", data: pcm.toString("base64") } }] } }] } });
+  if (chatCalls++ === 0) return r.fulfill({ status: 503, body: "" });
   asked.push(JSON.parse(r.request().postData() || "{}"));
   return r.fulfill({ json: { candidates: [{ content: { role: "model", parts: [{ text: "[heard: what time is it] It is a quarter past midnight, sir." }] } }] } });
 });
@@ -157,6 +163,10 @@ await page.waitForFunction(() => /didn't hear any talking/.test(document.querySe
 await page.waitForTimeout(500);
 if (asked.length !== before) fails.push("Gemini was asked although nothing was heard");
 if (await page.evaluate(() => document.querySelector("#talk").classList.contains("on"))) fails.push("the page is still busy after ME 0");
+
+// 7
+if (chatCalls < 2 || /503|too busy/.test(await page.textContent("#log"))) fails.push("a busy Gemini wasn't tried again");
+if (await page.evaluate(() => window.__macSpoke)) fails.push("the Mac spoke");
 
 await browser.close();
 if (errors.length) fails.push(...errors.map((e) => `page error: ${e}`));
