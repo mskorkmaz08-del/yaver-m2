@@ -144,6 +144,10 @@ const uint8_t BIG_DIGITS[10][6] PROGMEM = {   // top row 3 cells, bottom row 3 c
   {FULL,2,FULL,   1,1,FULL},      // 9
 };
 
+// Yaver's moods. Defined up here, before any function, because the Arduino
+// IDE adds its own function declarations above the first function.
+enum Mode : uint8_t { M_IDLE, M_LISTEN, M_THINK, M_SPEAK, M_RING, M_SLEEP };
+
 // ---------------------------------------------------------------- sounds
 // Each tune is {frequency Hz, milliseconds} pairs; 0 Hz is a rest; {0,0} ends it.
 const uint16_t TUNE_BOOT[]   PROGMEM = {523,80, 659,80, 784,80, 1047,160, 0,0};
@@ -180,7 +184,6 @@ void serviceTune(uint32_t now) {
 }
 
 // ---------------------------------------------------------------- state
-enum Mode : uint8_t { M_IDLE, M_LISTEN, M_THINK, M_SPEAK, M_RING, M_SLEEP };
 Mode mode = M_IDLE;
 Mode beforeRing = M_IDLE;
 uint32_t modeSince = 0;
