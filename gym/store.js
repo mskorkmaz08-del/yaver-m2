@@ -60,6 +60,7 @@ export const store = {
     const all = await this.captures();
     return tx("captures", "readwrite", (st) => { for (const c of all) if (c.sessionId === sessionId) st.delete(c.id); });
   },
+  async deleteCapture(id) { return tx("captures", "readwrite", (st) => st.delete(id)); },
   async clearCaptures() { return tx("captures", "readwrite", (st) => st.clear()); },
   async saveReference(r) { return tx("references", "readwrite", (st) => st.put(r)); },
   async reference(ex) { try { return await tx("references", "readonly", (st) => reqP(st.get(ex))); } catch { return null; } },
@@ -72,7 +73,7 @@ export const store = {
 };
 
 const SKEY = "calicoach.settings";
-const DEFAULTS = { showCamera: false, voice: true, voiceCues: true, mirror: true, model: "full", facing: "user", startEx: "auto", sbUrl: "", sbKey: "", sbEmail: "", autoUpload: true };
+const DEFAULTS = { showCamera: false, voice: true, voiceCues: true, mirror: true, model: "full", facing: "user", startEx: "auto", sbUrl: "", sbKey: "", sbEmail: "", autoUpload: true, autoEnd: true };
 export const settings = {
   get() {
     try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(SKEY) || "{}") }; } catch { return { ...DEFAULTS }; }

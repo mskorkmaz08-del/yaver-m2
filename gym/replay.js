@@ -2,7 +2,7 @@
 import { EXERCISES, FAULTS, SIGNAL_LABELS, REPLAY_JOINTS } from "./engine.js";
 import { FAULT_JOINTS } from "./pose.js";
 
-const COLORS = { good: "#49d17d", warn: "#ffb84d", bad: "#ff5f5f", accent: "#c8f560", grid: "#262d36", muted: "#8b96a5", blue: "#5fb4ff" };
+const COLORS = { good: "#34d399", warn: "#fbbf24", bad: "#f87171", accent: "#4cc9ff", grid: "rgba(120,200,255,0.12)", muted: "#7f93ab", blue: "#a78bfa" };
 export const scoreColor = (s) => (s >= 85 ? COLORS.good : s >= 60 ? COLORS.warn : COLORS.bad);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 

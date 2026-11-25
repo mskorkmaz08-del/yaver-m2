@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>CaliCoach</title>
-  <meta name="description" content="Calisthenics coach: recognises your exercise, counts reps, checks your form and tracks progress.">
-  <meta name="theme-color" content="#0b0d10">
+  <title>CaliCoach · Yaver Mark II</title>
+  <meta name="description" content="Calisthenics coach in Yaver Mark II: set the phone down and train. It recognises the exercise, counts reps, checks your form and shows the analytics after.">
+  <meta name="theme-color" content="#07090f">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -14,184 +14,173 @@
   <link rel="icon" href="../icons/yaver2c.svg" type="image/svg+xml">
   <link rel="icon" href="../icons/yaver2c-64.png" sizes="64x64">
   <link rel="apple-touch-icon" href="../icons/yaver2c-apple-180.png">
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=7">
   <script type="importmap">
     { "imports": { "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs" } }
   </script>
 </head>
 <body>
-  <main id="views">
-    <!-- ================= TRAIN ================= -->
-    <section id="view-train" class="view active" aria-label="Train">
-      <div id="stage">
-        <video id="video" playsinline muted></video>
-        <canvas id="overlay"></canvas>
+  <!-- ================= HOME ================= -->
+  <section id="view-home" class="view" aria-label="CaliCoach">
+    <header class="top">
+      <a class="back" href="../" aria-label="Back to Yaver Mark II">‹ Mark II</a>
+      <div class="brand"><b>CALI</b>COACH</div>
+      <div class="spacer"></div>
+      <a class="pill icon-pill" href="#history" aria-label="Analytics and history"><svg viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg><span>Analytics</span></a>
+      <a class="pill icon-pill" href="#guide" aria-label="Form guide"><svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM4 5v16M8 7h7"/></svg><span>Guide</span></a>
+      <a class="pill icon-pill" href="#settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.3 3h-4l-.4 2.7a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.4 2.7h4l.4-2.7a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg><span>Settings</span></a>
+    </header>
 
-        <div id="hud" hidden>
-          <div class="hud-top">
-            <button id="exPill" class="pill" aria-label="Choose exercise">
-              <span class="dot" id="exDot"></span><span id="exName">Detecting…</span><span class="chev">▾</span>
-            </button>
-            <div class="hud-right">
-              <button id="btnCam" class="mini skel" aria-pressed="false" title="Show or hide the camera picture behind the skeleton">Camera</button>
-              <span id="fps" class="mini"></span>
-              <span id="timer" class="mini">0:00</span>
-            </div>
-          </div>
-          <div class="counter">
-            <div id="repCount">0</div>
-            <div id="repSub"><span id="cleanCount">0</span> clean</div>
-          </div>
-          <div id="depth"><div id="depthFill"></div><div id="depthTarget"></div></div>
-          <div id="cue" class="cue" hidden></div>
-          <div id="lastRep" class="lastrep" hidden></div>
-          <div id="toast" class="toast" hidden></div>
-          <div class="controls">
-            <button id="btnFlip" class="round" aria-label="Switch camera">⟲</button>
-            <button id="btnPause" class="round big" aria-label="Pause">❚❚</button>
-            <button id="btnEndSet" class="round" aria-label="End set">✓</button>
-            <button id="btnFinish" class="round stop" aria-label="Finish workout">■</button>
+    <div class="orb-wrap">
+      <button id="btnStart" class="orb" aria-label="Start training"><span class="core"><span class="label">START</span></span></button>
+      <p class="orb-hint">Prop the phone up 2–3 m away, step back, train.<br>Yaver counts, coaches and keeps the score.</p>
+      <p id="loadStatus" class="orb-status" aria-live="polite"></p>
+    </div>
+
+    <p class="section-label">Exercise</p>
+    <div class="chips" id="exChips" role="radiogroup" aria-label="Exercise"></div>
+    <div class="opts">
+      <button class="pill" id="optFacing"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span id="facingLabel">Front camera</span></button>
+      <button class="pill" id="optVoice"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg>Voice <span class="state" id="voiceState">On</span></button>
+      <label class="pill" for="fileInput"><svg viewBox="0 0 24 24"><path d="M4 6h11v12H4zM15 10l5-3v10l-5-3"/></svg>Analyse a video<input type="file" id="fileInput" accept="video/*" hidden></label>
+      <button class="pill" id="optDemo"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Demo</button>
+    </div>
+
+    <p class="section-label">This week</p>
+    <div id="homeWeek"></div>
+  </section>
+
+  <!-- ================= TRAIN ================= -->
+  <section id="view-train" class="view" aria-label="Training">
+    <div class="stage">
+      <video id="video" playsinline muted class="unseen"></video>
+      <div class="stage-grid"></div>
+      <canvas id="overlay"></canvas>
+
+      <div id="frameCheck" class="frame-check" hidden>
+        <div id="fcCount" class="count" hidden></div>
+        <p id="fcMsg" class="msg">Step into view</p>
+        <p id="fcMsg2" class="msg2">Prop the phone up 2–3 m away. Your whole body, head to feet, needs to be in view.</p>
+        <div class="checks" id="fcChecks"><span data-k="body">Body</span><span data-k="head">Head</span><span data-k="feet">Feet</span><span data-k="still">Hold still</span></div>
+        <div class="actions"><button class="btn" id="fcCancel">Cancel</button><button class="btn" id="fcSkip">Start now</button></div>
+      </div>
+
+      <div id="hud" class="hud" hidden>
+        <div class="hud-top">
+          <button class="ex-pill" id="exPill" aria-label="Exercise (tap to choose)"><span class="exn" id="exName">Ready</span><span class="exs" id="exSub">Start moving</span></button>
+          <div class="hud-meta"><b id="timer">0:00</b><span id="hudSets">Set 1</span></div>
+        </div>
+        <div class="ring" id="ring">
+          <svg viewBox="0 0 200 200"><circle class="track" cx="100" cy="100" r="92"/><circle class="fill" id="ringFill" cx="100" cy="100" r="92" stroke-dasharray="578" stroke-dashoffset="578"/></svg>
+          <div class="inner">
+            <div id="repCount" class="big">0</div>
+            <div id="repSub" class="sub"><b id="cleanCount">0</b> clean</div>
           </div>
         </div>
-
-        <div id="setup" class="setup">
-          <a class="back-home" href="../" aria-label="Back to Yaver Mark II">‹ Yaver</a>
-          <div class="brand"><img src="../icons/yaver2c.svg" alt="" width="44" height="44"><div><h1>CaliCoach</h1><p>Calisthenics form coach · Yaver Mark II</p></div></div>
-          <div class="card">
-            <h2>Start a workout</h2>
-            <div class="seg" role="radiogroup" aria-label="Video source">
-              <button class="on" data-src="camera">Camera</button>
-              <button data-src="file">Video file</button>
-              <button data-src="demo">Demo</button>
-            </div>
-            <div id="srcCamera" class="srcpane">
-              <div class="row">
-                <label>Camera</label>
-                <div class="seg small" id="facingSeg"><button class="on" data-facing="user">Front</button><button data-facing="environment">Back</button></div>
-              </div>
-            </div>
-            <div id="srcFile" class="srcpane" hidden>
-              <p class="hint">Analyse a video you recorded (side view works best). It plays at half speed for accuracy.</p>
-              <input type="file" id="fileInput" accept="video/*">
-            </div>
-            <div id="srcDemo" class="srcpane" hidden>
-              <p class="hint">Plays generated workouts (no camera) so you can see how recognition, rep counting and form feedback work.</p>
-            </div>
-            <div class="row">
-              <label>Exercise</label>
-              <select id="startEx"></select>
-            </div>
-            <button id="btnStart" class="primary">Start</button>
-            <p id="loadStatus" class="hint"></p>
-          </div>
-          <details class="card tips" open>
-            <summary>Set up your phone</summary>
-            <ul>
-              <li>Prop the phone 2–3 m away so your <b>whole body</b> is in the picture, head to feet, through the whole movement.</li>
-              <li><b>Side view</b> for push-ups, squats, dips, rows, lunges and leg raises. <b>Front view</b> works for pull-ups and shows knees caving in on squats.</li>
-              <li>Good light, nothing behind you that looks like a person, and fitted clothes help the tracking.</li>
-              <li>Keep the phone upright and level; the app uses gravity to judge body lines.</li>
-            </ul>
-          </details>
+        <div id="cue" class="cue" hidden></div>
+        <div class="hud-bottom">
+          <button class="round small" id="btnFlip" aria-label="Switch camera"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><path d="M9 13a3 3 0 0 1 5.2-2M15 13a3 3 0 0 1-5.2 2"/></svg></button>
+          <button class="round" id="btnPause" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg></button>
+          <button class="round stop" id="btnFinish" aria-label="Finish workout"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+          <button class="round small" id="btnCam" aria-label="Show camera picture" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg></button>
         </div>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <!-- ================= HISTORY ================= -->
-    <section id="view-history" class="view" aria-label="History">
-      <header class="bar"><h1>History</h1></header>
-      <div id="historyList" class="list"></div>
-    </section>
+  <!-- ================= REPORT (one workout) ================= -->
+  <section id="view-report" class="view" aria-label="Workout report">
+    <header class="top">
+      <a class="back" href="#history" id="reportBack">‹ Analytics</a>
+      <div class="spacer"></div>
+      <a class="pill" href="#home">Done</a>
+    </header>
+    <div id="report"></div>
+  </section>
 
-    <!-- ================= PROGRESS ================= -->
-    <section id="view-progress" class="view" aria-label="Progress">
-      <header class="bar"><h1>Progress</h1></header>
-      <div id="overview" class="pad"></div>
-      <div class="pad"><select id="progEx" aria-label="Exercise"></select></div>
-      <div id="progress" class="pad"></div>
-    </section>
+  <!-- ================= ANALYTICS & HISTORY ================= -->
+  <section id="view-history" class="view" aria-label="Analytics">
+    <header class="top">
+      <a class="back" href="#home">‹ CaliCoach</a>
+      <div class="title">Analytics</div>
+      <div class="spacer"></div>
+    </header>
+    <div id="history"></div>
+  </section>
 
-    <!-- ================= GUIDE ================= -->
-    <section id="view-guide" class="view" aria-label="Guide">
-      <header class="bar"><h1>Form guide</h1></header>
-      <div id="guide" class="pad"></div>
-    </section>
+  <!-- ================= GUIDE ================= -->
+  <section id="view-guide" class="view" aria-label="Form guide">
+    <header class="top">
+      <a class="back" href="#home">‹ CaliCoach</a>
+      <div class="title">Form guide</div>
+    </header>
+    <div id="guide"></div>
+  </section>
 
-    <!-- ================= SETTINGS ================= -->
-    <section id="view-settings" class="view" aria-label="Settings">
-      <header class="bar"><h1>Settings</h1></header>
-      <div class="pad">
-        <div class="card">
-          <h2>Coaching</h2>
-          <label class="toggle"><input type="checkbox" id="setVoice" checked><span>Voice: count reps out loud</span></label>
-          <label class="toggle"><input type="checkbox" id="setVoiceCues" checked><span>Voice: form cues</span></label>
-          <label class="toggle"><input type="checkbox" id="setMirror" checked><span>Mirror the front camera</span></label>
-          <label class="toggle"><input type="checkbox" id="setCam"><span>Show the camera picture while training (off: just your skeleton, fewer distractions)</span></label>
-          <div class="row"><label for="setModel">Pose model</label>
-            <select id="setModel"><option value="full">Full (accurate)</option><option value="lite">Lite (faster, older phones)</option><option value="heavy">Heavy (most accurate, slow)</option></select>
-          </div>
-        </div>
-        <div class="card">
-          <h2>Teach it your form</h2>
-          <p class="hint">Record 20 seconds of an exercise (or of you just moving around: "Not exercising") and recognition adapts to your body, camera and style. Corrections you make after a set are learned the same way.</p>
-          <div class="row"><label for="teachEx">Exercise</label><select id="teachEx"></select></div>
-          <button id="btnTeach" class="secondary">Record 20 s example</button>
-          <p id="teachInfo" class="hint"></p>
-          <button id="btnClearTeach" class="link danger">Forget my examples</button>
-        </div>
-        <div class="card" id="serverCard">
-          <h2>Server (Supabase)</h2>
-          <p class="hint">Uploads your 3D skeleton captures and workout summaries to your own Supabase project. No video is ever uploaded. Set-up steps: supabase/README.md.</p>
-          <label class="field"><span>Project URL</span><input type="url" id="sbUrl" placeholder="https://xxxx.supabase.co" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-          <label class="field"><span>Anon (public) key</span><input type="password" id="sbKey" placeholder="eyJhbGciOi…" autocomplete="off"></label>
-          <div id="sbSignedOut">
-            <label class="field"><span>Email</span><input type="email" id="sbEmail" placeholder="you@example.com" autocomplete="email"></label>
-            <button class="secondary" id="btnSbCode" style="width:100%">Email me a sign-in code</button>
-            <div id="sbCodeRow" class="row" hidden>
-              <input type="text" id="sbCode" inputmode="numeric" maxlength="10" placeholder="6-digit code" autocomplete="one-time-code">
-              <button class="secondary" id="btnSbVerify">Sign in</button>
-            </div>
-          </div>
-          <div id="sbSignedIn" hidden>
-            <p class="hint">Signed in as <b id="sbWho"></b></p>
-            <label class="toggle"><input type="checkbox" id="setAutoUpload" checked><span>Upload automatically after each workout</span></label>
-            <div class="btns"><button class="secondary" id="btnSbUpload">Upload now</button><button class="secondary" id="btnSbOut">Sign out</button></div>
-          </div>
-          <p id="sbStatus" class="hint"></p>
-        </div>
-        <div class="card">
-          <h2>Your data</h2>
-          <p class="hint">Workouts are stored on this phone only. Add CaliCoach to your Home Screen so the phone keeps them, and export a backup now and then.</p>
-          <div class="btns">
-            <button id="btnExport" class="secondary">Export backup</button>
-            <button id="btnExportCsv" class="secondary">Export reps (CSV)</button>
-            <label class="secondary filebtn">Import backup<input type="file" id="importInput" accept="application/json,.json" hidden></label>
-            <button id="btnExportTrain" class="secondary">Export training clips</button>
-          </div>
-          <button id="btnWipe" class="link danger">Delete all workouts</button>
-          <p id="storageInfo" class="hint"></p>
-        </div>
-        <div class="card">
-          <h2>About</h2>
-          <p class="hint" id="about"></p>
+  <!-- ================= SETTINGS ================= -->
+  <section id="view-settings" class="view" aria-label="Settings">
+    <header class="top">
+      <a class="back" href="#home">‹ CaliCoach</a>
+      <div class="title">Settings</div>
+    </header>
+    <div class="card">
+      <h2>Coaching</h2>
+      <label class="toggle"><input type="checkbox" id="setVoice" checked><span>Voice: count reps out loud</span></label>
+      <label class="toggle"><input type="checkbox" id="setVoiceCues" checked><span>Voice: form cues and rest updates</span></label>
+      <label class="toggle"><input type="checkbox" id="setCam"><span>Show the camera picture while training (off: only your skeleton)</span></label>
+      <label class="toggle"><input type="checkbox" id="setMirror" checked><span>Mirror the front camera</span></label>
+      <label class="toggle"><input type="checkbox" id="setAutoEnd" checked><span>Finish the workout when I walk away (30 s out of view)</span></label>
+      <label class="field"><span>Pose model</span>
+        <select id="setModel"><option value="full">Full (accurate)</option><option value="lite">Lite (faster, older phones)</option><option value="heavy">Heavy (most accurate, slow)</option></select>
+      </label>
+    </div>
+    <div class="card">
+      <h2>Teach it your form</h2>
+      <p class="hint">Record 20 seconds of an exercise (or of you just moving around: "Not exercising") and recognition adapts to your body, camera and style. Corrections in a workout report are learned the same way.</p>
+      <label class="field"><span>Exercise</span><select id="teachEx"></select></label>
+      <button class="btn wide" id="btnTeach">Record 20 s example</button>
+      <p id="teachInfo" class="hint"></p>
+      <button id="btnClearTeach" class="link danger">Forget my examples</button>
+    </div>
+    <div class="card" id="serverCard">
+      <h2>Server (Supabase)</h2>
+      <p class="hint">Uploads your 3D skeleton captures and workout summaries to your own Supabase project (never video). Yaver Mark One reads your results from here too. Set-up: gym/supabase/README.md.</p>
+      <label class="field"><span>Project URL</span><input type="url" id="sbUrl" placeholder="https://xxxx.supabase.co" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <label class="field"><span>Anon (public) key</span><input type="password" id="sbKey" placeholder="eyJhbGciOi…" autocomplete="off"></label>
+      <div id="sbSignedOut">
+        <label class="field"><span>Email</span><input type="email" id="sbEmail" placeholder="you@example.com" autocomplete="email"></label>
+        <button class="btn wide" id="btnSbCode">Email me a sign-in code</button>
+        <div id="sbCodeRow" class="row" style="margin-top:10px" hidden>
+          <input type="text" id="sbCode" inputmode="numeric" maxlength="10" placeholder="6-digit code" autocomplete="one-time-code">
+          <button class="btn" id="btnSbVerify">Sign in</button>
         </div>
       </div>
-    </section>
-  </main>
+      <div id="sbSignedIn" hidden>
+        <p class="hint">Signed in as <b id="sbWho"></b></p>
+        <label class="toggle"><input type="checkbox" id="setAutoUpload" checked><span>Upload automatically after each workout</span></label>
+        <div class="btns"><button class="btn" id="btnSbUpload">Upload now</button><button class="btn" id="btnSbOut">Sign out</button></div>
+      </div>
+      <p id="sbStatus" class="hint"></p>
+    </div>
+    <div class="card">
+      <h2>Your data</h2>
+      <p class="hint">Workouts are stored on this device. On iPhone, add CaliCoach to the Home Screen so they're kept, and export a backup now and then.</p>
+      <div class="btns">
+        <button id="btnExport" class="btn">Export backup</button>
+        <button id="btnExportCsv" class="btn">Export reps (CSV)</button>
+        <label class="btn" for="importInput">Import backup<input type="file" id="importInput" accept="application/json,.json" hidden></label>
+        <button id="btnExportTrain" class="btn">Export training clips</button>
+      </div>
+      <button id="btnWipe" class="link danger">Delete all workouts</button>
+      <p id="storageInfo" class="hint"></p>
+    </div>
+    <div class="card"><h2>About</h2><p class="hint" id="about"></p></div>
+  </section>
 
-  <nav id="tabs" aria-label="Sections">
-    <a class="tab-home" href="../" aria-label="Back to Yaver Mark II"><span class="ti">‹</span>Yaver</a>
-    <button data-view="train" class="on"><span class="ti">◉</span>Train</button>
-    <button data-view="history"><span class="ti">☰</span>History</button>
-    <button data-view="progress"><span class="ti">↗</span>Progress</button>
-    <button data-view="guide"><span class="ti">✦</span>Guide</button>
-    <button data-view="settings"><span class="ti">⚙</span>Settings</button>
-  </nav>
-
-  <!-- bottom sheet used for pickers and summaries -->
+  <div id="toast" class="toast" hidden></div>
   <div id="sheetBack" class="sheet-back" hidden></div>
   <div id="sheet" class="sheet" hidden role="dialog" aria-modal="true"><div class="grab"></div><div id="sheetBody"></div></div>
 
-  <script type="module" src="app.js?v=4"></script>
+  <script type="module" src="app.js?v=7"></script>
 </body>
 </html>
