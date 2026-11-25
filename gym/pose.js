@@ -141,7 +141,7 @@ export const FAULT_JOINTS = {
  * Draw the skeleton. lm: 33 x [x, y, vis] normalised to the frame.
  * Maps the frame (fw x fh) into the canvas with "contain" fitting.
  */
-export function drawPose(ctx, lm, fw, fh, { highlight = [], color = "#c8f560" } = {}) {
+export function drawPose(ctx, lm, fw, fh, { highlight = [], color = "#4cc9ff", glow = true } = {}) {
   const cw = ctx.canvas.width, ch = ctx.canvas.height;
   const s = Math.min(cw / fw, ch / fh);
   const ox = (cw - fw * s) / 2, oy = (ch - fh * s) / 2;
@@ -149,10 +149,12 @@ export function drawPose(ctx, lm, fw, fh, { highlight = [], color = "#c8f560" } 
   const hl = new Set(highlight);
   const lw = Math.max(3, Math.min(cw, ch) / 110);
   ctx.lineCap = "round";
+  ctx.save();
+  if (glow) { ctx.shadowColor = "rgba(76,201,255,0.85)"; ctx.shadowBlur = lw * 3; }
   for (const [a, b] of CONNECTIONS) {
     if (lm[a][2] < 0.3 || lm[b][2] < 0.3) continue;
     const [x1, y1] = P(a), [x2, y2] = P(b);
-    ctx.strokeStyle = hl.has(a) || hl.has(b) ? "#ff5f5f" : color;
+    ctx.strokeStyle = hl.has(a) || hl.has(b) ? "#f87171" : color;
     ctx.globalAlpha = 0.9;
     ctx.lineWidth = lw;
     ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
@@ -162,7 +164,8 @@ export function drawPose(ctx, lm, fw, fh, { highlight = [], color = "#c8f560" } 
     if (i > 0 && i < 11) continue;
     if (lm[i][2] < 0.3) continue;
     const [x, y] = P(i);
-    ctx.fillStyle = hl.has(i) ? "#ff5f5f" : "#ffffff";
+    ctx.fillStyle = hl.has(i) ? "#f87171" : "#e8f7ff";
     ctx.beginPath(); ctx.arc(x, y, hl.has(i) ? lw * 1.6 : lw * 0.9, 0, Math.PI * 2); ctx.fill();
   }
+  ctx.restore();
 }

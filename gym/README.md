@@ -80,15 +80,29 @@ has a `get_calisthenics` tool for analysis and plans ("plan my next two weeks").
   movement. **Side view** for push-ups, squats, dips, rows, lunges and leg raises;
   **front view** works for pull-ups and is needed to see knees caving in on squats.
   Keep the phone upright: body lines are judged against gravity.
-* **Train tab:** *Auto-detect* or choose the exercise yourself (tap the exercise name at
-  the top during a workout to switch or lock it). *Video file* analyses a recording.
-  *Demo* plays generated workouts so you can see everything working without a camera.
-* **During a set:** big rep counter, clean-rep count, a depth bar on the right (the white
-  mark is the target depth), the last rep's score, and red cues such as "Hips sagging".
-  ✓ ends a set early, ■ finishes the workout.
-* **After the workout:** a summary per set and per rep (score, bottom angle, lowering
-  and lifting time, faults). If a set got the wrong exercise, correct it there: the app
-  learns from the correction.
+* **Home:** pick *Auto-detect* or an exercise, front or back camera, voice on/off, then
+  tap the big **Start** orb. *Analyse a video* runs a recording through the same
+  pipeline; *Demo* plays generated workouts so you can see everything without a camera.
+* **Set the phone down and train (hands-free):** after Start, Yaver checks the framing
+  from the skeleton ("I can't see your feet", "Come a little closer"), waits until you
+  stand still in view, counts down "3, 2, 1, go" and starts by itself. *Start now* skips
+  the check. The camera picture stays hidden: the screen shows only your glowing
+  skeleton, a huge rep number with a ring that follows each rep, the exercise and
+  the time. Reps are counted out loud and form faults are spoken.
+* **Rest is automatic:** a few seconds after your last rep the screen turns into a
+  green rest timer (with a reminder at 1 and 2 minutes). Start the next set whenever
+  you like: sets are split on their own. Walk out of view for 30 s and the workout
+  finishes and saves itself (or tap ■). Tap the exercise name to lock or change it.
+* **Report after the workout:** total reps, sets, exercises and time; a timeline of the
+  whole workout (sets coloured by movement, every rep marked, rest gaps labelled);
+  working vs resting time, rest between sets and **time between reps**; per exercise:
+  reps, clean %, form, time per rep, time between reps, best set; per set: rest before,
+  a rhythm strip (each rep as a block, seconds between them), the rep table and a 3D
+  replay of any rep. If a set got the wrong exercise, fix it there: the app learns from
+  the correction. The workout is already saved; *Discard* removes it.
+* **Analytics:** all-time totals, reps per week, a card per exercise (records, form,
+  time between reps, what to do next, progress charts, common faults) and every
+  workout's report.
 * **Settings → Teach it your form:** record 20 s of an exercise, or of you just moving
   around. Recognition adapts to your body and camera right away. Do this once per
   exercise you use: it's the single best way to make detection reliable for you.

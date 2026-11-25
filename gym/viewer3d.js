@@ -404,8 +404,8 @@ export class Viewer3D {
 
   drawBody(P, { ghost = false } = {}) {
     const alpha = ghost ? 0.32 : 1;
-    const base = ghost ? hexRGB("#5fb4ff") : hexRGB("#e6e9ee");
-    const left = ghost ? hexRGB("#7cc4ff") : hexRGB("#cfe98f");
+    const base = ghost ? hexRGB("#34d399") : hexRGB("#d8e6f5");
+    const left = ghost ? hexRGB("#6ee7b7") : hexRGB("#7fd8ff");
     const bad = hexRGB("#ff5a5a");
     const parts = this.parts(P);
     const color = (pt) => (!ghost && pt.j.some((j) => this.hl.has(j)) ? bad : pt.side === "l" ? left : base);
@@ -460,7 +460,7 @@ export class Viewer3D {
     for (let i = 0; i <= this.i; i += step) {
       const p = getP(this.frames[i], key);
       const age = (this.i - i) / Math.max(1, this.frames.length);
-      this.sph(p, 0.012, hexRGB("#c8f560"), Math.max(0.15, 0.9 - age * 1.2));
+      this.sph(p, 0.012, hexRGB("#4cc9ff"), Math.max(0.15, 0.9 - age * 1.2));
     }
   }
 

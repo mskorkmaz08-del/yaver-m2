@@ -120,7 +120,7 @@ export function generalAdvice(sessions) {
 }
 
 // ---------- tiny SVG charts
-export function chart(values, { labels = [], type = "line", max = null, color = "#c8f560", height = 130, suffix = "" } = {}) {
+export function chart(values, { labels = [], type = "line", max = null, color = "#4cc9ff", height = 130, suffix = "" } = {}) {
   const W = 340, H = height, pl = 28, pr = 8, pt = 10, pb = 20;
   const n = values.length;
   if (!n) return "";
@@ -130,7 +130,7 @@ export function chart(values, { labels = [], type = "line", max = null, color = 
   let g = "";
   for (const f of [0, 0.5, 1]) {
     const v = mx * f;
-    g += `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="#262d36" stroke-width="1"/>`;
+    g += `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(120,200,255,0.12)" stroke-width="1"/>`;
     g += `<text x="${pl - 4}" y="${y(v) + 3}" text-anchor="end">${Math.round(v)}${suffix}</text>`;
   }
   if (type === "bar") {
